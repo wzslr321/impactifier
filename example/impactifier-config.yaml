@@ -1,0 +1,8 @@
+repository:
+  path: "https://github.com/wzslr321/cereb-os" 
+  access_token: ${GITHUB_ACCESS_TOKEN}
+options:
+  branch: "trunk"
+  on: 
+    - push
+    - pull_request
