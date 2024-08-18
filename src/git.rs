@@ -3,9 +3,6 @@ use std::path::Path;
 
 use crate::config::RepositoryConfig;
 
-// TODO: Optimize cloning to use `--bare` flag,
-// consider shallow copy if commit history turns out not to be crucial,
-// and possibly setup cache strategy
 pub fn clone_repo(
     options: &RepositoryConfig,
     clone_into: &Path,

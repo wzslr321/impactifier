@@ -1,4 +1,5 @@
 use serde::{Deserialize, Deserializer};
+use std::cmp;
 use std::env;
 use std::fmt;
 use std::path::Path;
@@ -52,7 +53,7 @@ impl Config {
         Ok(cfg)
     }
 }
-// Implement Display for RepositoryConfig
+
 impl fmt::Display for RepositoryConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -60,10 +61,18 @@ impl fmt::Display for RepositoryConfig {
             "RepositoryConfig {{ url: {}, branch: {}, access_token: {} }}",
             self.url,
             self.branch,
-            if self.access_token.is_some() {
-                "[CENSORED_ACCESS_TOKEN]"
-            } else {
-                "None"
+            match &self.access_token {
+                Some(token) => {
+                    let last_characters =
+                        match token.char_indices().nth_back(cmp::min(4, token.len())) {
+                            Some((i, _)) => &token[i..],
+                            None => "INVALID",
+                        };
+
+                    format!("****{}", last_characters)
+
+                }
+                None => "None".to_string(),
             }
         )
     }
