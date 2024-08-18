@@ -2,15 +2,63 @@ mod config;
 mod git;
 mod utils;
 
+use clap::Parser;
 use config::Config;
 use git::clone_repo;
 use std::error::Error;
 use tracing::{error, info, warn, Level};
 
-fn main() -> Result<(), Box<dyn Error>> {
-    tracing_subscriber::fmt().with_max_level(Level::DEBUG).init();
+#[derive(Parser, Debug)]
+#[command(
+    version,
+    about = "Impactifier is a tool for analyzing code changes and assessing their impact.",
+    long_about = r#"
+Impactifier is an early-stage tool designed to help developers understand the impact of their code changes before they are merged. 
+It simplifies the process of identifying potential issues and dependencies by analyzing code changes within a repository.
 
-    let configuration_file = "impactifier-config.yaml";
+Key features include:
+
+- Analyzing changes to identify potential impacts on other parts of the codebase.
+- Integrating with CI/CD pipelines to automate impact analysis on pull requests and commits.
+- Configurable to work with different repository setups and trigger actions.
+"#
+)]
+struct Args {
+    /// Path to the config file.
+    /// Currently, only .yaml files are supported.
+    ///
+    /// Example config file can be found at: github.com/impactifier/example
+    #[arg(short, long, default_value_t = String::from("impactifier-config.yaml"))]
+    config: String,
+
+    /// Sets max tracing level. Available options:
+    ///
+    /// 0 = Trace
+    /// 1 = Debug
+    /// 2 = Info
+    /// 3 = Warn
+    /// 4 = Error
+    #[arg(long, default_value_t = 2)]
+    tracing_level: u8,
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let args = Args::parse();
+
+    let tracing_level = match args.tracing_level {
+        0 => Level::TRACE,
+        1 => Level::DEBUG,
+        2 => Level::INFO,
+        3 => Level::WARN,
+        4 => Level::ERROR,
+        _ => Level::INFO,
+    };
+
+    tracing_subscriber::fmt()
+        .with_max_level(tracing_level)
+        .init();
+
+    let configuration_file = args.config;
     info!("Starting loading config from {}", configuration_file);
     let config = match Config::load_from_file(&configuration_file) {
         Ok(config) => {
