@@ -15,9 +15,9 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 pub struct RepositoryConfig {
     #[serde(deserialize_with = "deserialize_url")]
-    pub url: Url,
+    pub url: Option<Url>,
+    pub path: Option<Box<Path>>,
     pub access_token: Option<String>,
-    pub branch: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,11 +30,11 @@ pub enum TriggerAction {
 #[derive(Debug, Deserialize)]
 pub struct OptionsConfig {
     pub on: Vec<TriggerAction>,
-    pub clone_into: Box<Path>,
+    pub clone_into: Option<Box<Path>>,
 }
 
 impl Config {
-    pub fn load_from_file(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load_from_file(file_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let yaml_content = match std::fs::read_to_string(file_path) {
             Ok(content) => {
                 debug!("Succesfully read yaml config file:\n{}", content);
@@ -58,9 +58,11 @@ impl fmt::Display for RepositoryConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "RepositoryConfig {{ url: {}, branch: {}, access_token: {} }}",
-            self.url,
-            self.branch,
+            "RepositoryConfig {{ url: {},  access_token: {} }}",
+            match &self.url {
+                Some(url) => url.as_str(),
+                None => "None",
+            },
             match &self.access_token {
                 Some(token) => {
                     let last_characters =
@@ -70,7 +72,6 @@ impl fmt::Display for RepositoryConfig {
                         };
 
                     format!("****{}", last_characters)
-
                 }
                 None => "None".to_string(),
             }
@@ -100,10 +101,13 @@ fn replace_env_vars(yaml_content: &str) -> String {
     )
 }
 
-fn deserialize_url<'a, D>(deserializer: D) -> Result<Url, D::Error>
+fn deserialize_url<'a, D>(deserializer: D) -> Result<Option<Url>, D::Error>
 where
     D: Deserializer<'a>,
 {
     let url_str = String::deserialize(deserializer)?;
-    Url::parse(&url_str).map_err(serde::de::Error::custom)
+    match Url::parse(&url_str) {
+        Ok(url) => Ok(Some(url)),
+        Err(e) => Err(serde::de::Error::custom(e)),
+    }
 }
