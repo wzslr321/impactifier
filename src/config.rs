@@ -68,6 +68,7 @@ impl fmt::Display for RepositoryConfig {
                     let last_characters =
                         match token.char_indices().nth_back(cmp::min(4, token.len())) {
                             Some((i, _)) => &token[i..],
+                            // TODO: Improve somehow
                             None => "INVALID",
                         };
 

@@ -4,7 +4,7 @@ use clap::Parser;
 use tracing::{error, info, trace, Level};
 use uuid::Uuid;
 
-use crate::config::Config;
+use crate::config::{Config, RepositoryConfig};
 use crate::git::clone_repo;
 use crate::utils;
 
@@ -54,6 +54,19 @@ struct Args {
     tracing_level: u8,
 }
 
+// Can be run either locally or inside a CI/CD
+// CI/CD automatically can detect commit/branches
+//
+// In case of local usage, we have a few options
+// - specify url & analyze impact of specified branches/commits
+//   from_branch fallbacks to default after clone
+//   if no branch & commit specified, fails as there is nothing to compare
+// - dont specify url, specify path
+//   creates repository struct from local path
+//   from_branch fallbacks to default after opening
+//   if branches specified & local changes detected, optionally includes those
+//   if no branch & commit specified, tries to analyze local changes
+//   if no local changes fails as there is nothing to compare
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     setup_logging(args.tracing_level);
@@ -63,74 +76,126 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => return Err(e),
     };
 
-    match (args.from_branch, args.to_branch) {
-        (None, None) => {
-            info!("No branches specified");
-            match args.of_commit {
-                Some(commit_id) => analyze_commit(&commit_id),
-                None => {
-                    info!("No commit specified. Attempting to analyze local changes");
-                    try_analyze_local_changes();
-                }
-            }
-        }
-        (None, Some(_)) => {}
-        (Some(_), None) => {
-            error!("Incorrect CLI arguments. Specifying `from_branch` requires `to_branch` to be specified");
-            return Err(Box::from("Incorrect arguments"));
-        }
-        (Some(from_branch), Some(to_branch)) => {
-            info!(
-                "Attempting to compare branch {} with branch {}",
-                from_branch, to_branch
+    match &config.repository.url {
+        Some(url) => {
+            let _ = try_analyze_from_url(
+                url.as_str(),
+                args.from_branch,
+                args.to_branch,
+                args.of_commit,
+                config.options.clone_into,
+                &config.repository,
             );
-            match &config.repository.url {
-                Some(url) => {
-                    info!("Attempting to clone repository from url: {}", url);
-                    let clone_into_path = &config.options.clone_into.unwrap_or_else(|| {
-                        let path = Path::new(&format!("repository{}", Uuid::new_v4())).into();
-                        trace!("set fallback clone_into path to {:?}", path);
-                        path
-                    });
-                    match utils::prepare_directory(&clone_into_path) {
-                        Ok(_) => {
-                            trace!("Starting to clone repository");
-                            let _cloned_repo = match clone_repo(
-                                &config.repository,
-                                &clone_into_path,
-                                Some(&from_branch),
-                            ) {
-                                Ok(repo) => repo,
-                                Err(e) => {
-                                    error!("Failed to clone repository");
-                                    return Err(e.into());
-                                }
-                            };
-                            info!("Repository cloned successfuly");
-                        }
-                        Err(e) => {
-                            error!("Failed to prepare directory for cloning");
-                            return Err(e.into());
-                        }
-                    };
+        }
+        None => {
+            match &config.repository.path {
+                Some(path) => {
+                    let _ = try_analyze_from_path(
+                        (*path)
+                            .to_str()
+                            .expect("Path is expected to be validated during serialization"),
+                        args.from_branch,
+                        args.to_branch,
+                        args.of_commit,
+                        &config.repository,
+                    );
                 }
                 None => {
-                    info!(
-                        "Attempting to analyze changes between branch {} and {} locally",
-                        from_branch, to_branch
-                    );
-                    try_analyze_local_changes();
+                    error!("Repository url and path are unspecified");
+                    return Err(Box::from("Either repository url or path must be specified"));
                 }
-            }
+            };
         }
     };
 
     Ok(())
 }
 
-fn analyze_commit(_commit_id: &str) {}
+fn try_analyze_from_path(
+    _path: &str,
+    _from_branch: Option<String>,
+    to_branch: Option<String>,
+    commit_id: Option<String>,
+    _config: &RepositoryConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let None = to_branch {
+        return match &commit_id {
+            Some(commit_id) => try_analyze_commit(commit_id),
+            None => try_analyze_local_changes(),
+        };
+    };
 
-fn try_analyze_local_changes() {}
+    Ok(())
+}
+
+fn try_analyze_from_url(
+    url: &str,
+    from_branch: Option<String>,
+    to_branch: Option<String>,
+    commit_id: Option<String>,
+    clone_into: Option<Box<Path>>,
+    config: &RepositoryConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match (from_branch, to_branch) {
+        (None, None) => {
+            info!("No branches specified");
+            match commit_id {
+                Some(commit_id) => try_analyze_commit(&commit_id),
+                None => {
+                    error!("No commit specified. Nothing to analyze");
+                    Err(Box::from(
+                        "No branches and no commit specified. Nothing to analyze.",
+                    ))
+                }
+            }
+        }
+        // TODO: implement
+        (None, Some(_)) => Ok(()),
+        (Some(_), None) => {
+            error!("Incorrect CLI arguments. Specifying `from_branch` requires `to_branch` to be specified");
+            Err(Box::from("Incorrect arguments"))
+        }
+        (Some(from_branch), Some(to_branch)) => {
+            info!(
+                "Attempting to compare branch {} with branch {}",
+                from_branch, to_branch
+            );
+            info!("Attempting to clone repository from url: {}", url);
+            let clone_into_path = &clone_into.unwrap_or_else(|| {
+                let path = Path::new(&format!("repository{}", Uuid::new_v4())).into();
+                trace!("set fallback clone_into path to {:?}", path);
+                path
+            });
+            match utils::prepare_directory(&clone_into_path) {
+                Ok(_) => {
+                    trace!("Starting to clone repository");
+                    let _cloned_repo =
+                        match clone_repo(&config, &clone_into_path, Some(&from_branch)) {
+                            Ok(repo) => repo,
+                            Err(e) => {
+                                error!("Failed to clone repository");
+                                return Err(e.into());
+                            }
+                        };
+                    info!("Repository cloned successfuly");
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Failed to prepare directory for cloning");
+                    return Err(e.into());
+                }
+            }
+        }
+    }
+}
+
+fn try_analyze_commit(_commit_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    Ok(())
+}
+
+fn try_analyze_local_changes() -> Result<(), Box<dyn std::error::Error>> {
+    Ok(())
+}
 
 fn setup_logging(tracing_level: u8) {
     let tracing_level = match tracing_level {
