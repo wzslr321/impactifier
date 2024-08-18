@@ -1,30 +1,39 @@
 mod config;
 mod git;
+mod utils;
 
 use config::Config;
-use std::path::Path;
-use tracing::{error, info, warn};
+use git::clone_repo;
 use std::error::Error;
+use tracing::{error, info, warn, Level};
 
-// TODO: Improve error handling with custom errors
 fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::fmt().with_max_level(Level::DEBUG).init();
+
     let configuration_file = "impactifier-config.yaml";
+    info!("Starting loading config from {}", configuration_file);
     let config = match Config::load_from_file(&configuration_file) {
-        Ok(config) => config,
+        Ok(config) => {
+            info!("Config loaded successfully");
+            config
+        }
         Err(e) => {
             error!("Failed to read configuration from {}", &configuration_file);
             return Err(e.into());
         }
     };
-
-    tracing_subscriber::fmt().init();
+    match utils::prepare_directory(&config.options.clone_into) {
+        Ok(_) => {
+            info!("Successfully prepared directory for cloning");
+        }
+        Err(e) => {
+            error!("Failed to prepare directory for cloning");
+            return Err(e.into());
+        }
+    };
 
     info!("Starting to clone repository");
-    let cloned_repo = match git::clone_repo(
-        &config.repository.path,
-        Path::new("./repo/"),
-        config.repository.access_token.as_deref(),
-    ) {
+    let cloned_repo = match clone_repo(&config.repository, &config.options.clone_into) {
         Ok(repo) => repo,
         Err(e) => {
             error!("Failed to clone repository");
