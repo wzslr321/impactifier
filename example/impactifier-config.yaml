@@ -6,4 +6,3 @@ options:
   on: 
     - push
     - pull_request
-  clone_into: "./repo"

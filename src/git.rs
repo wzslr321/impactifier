@@ -1,16 +1,19 @@
-use git2::{Cred, RemoteCallbacks, Repository};
 use std::path::Path;
+
+use git2::{Cred, RemoteCallbacks, Repository};
+use tracing::error;
 
 use crate::config::RepositoryConfig;
 
 pub fn clone_repo(
     options: &RepositoryConfig,
     clone_into: &Path,
-) -> Result<Repository, git2::Error> {
+    branch: Option<&str>,
+) -> Result<Repository, Box<dyn std::error::Error>> {
     let token = match &options.access_token {
         Some(token) => token,
         None => {
-            return Err(git2::Error::from_str("No access token provided"));
+            return Err(Box::from("No access token provided"));
         }
     };
 
@@ -21,7 +24,9 @@ pub fn clone_repo(
 
     let mut builder = git2::build::RepoBuilder::new();
     builder.bare(true);
-    builder.branch(&options.branch);
+    if let Some(branch) = branch {
+        builder.branch(&branch);
+    }
 
     let mut fetch_options = git2::FetchOptions::new();
     fetch_options.remote_callbacks(callbacks);
@@ -29,5 +34,14 @@ pub fn clone_repo(
 
     builder.fetch_options(fetch_options);
 
-    builder.clone(&options.url.to_string(), clone_into)
+    match &options.url {
+        Some(url) => match builder.clone(url.as_str(), &clone_into) {
+            Ok(repository) => Ok(repository),
+            Err(e) => Err(e.into()),
+        },
+        None => {
+            error!("Failed to clone the repository. Url not specified.");
+            Err(Box::from("Repository url not specified"))
+        }
+    }
 }

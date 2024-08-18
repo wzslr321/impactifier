@@ -1,6 +1,5 @@
-use std::fs;
-use std::path::Path;
-use tracing::info;
+use std::{fs, path::Path};
+use tracing::{info, trace};
 
 pub fn prepare_directory(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if path.exists() {
@@ -13,5 +12,6 @@ pub fn prepare_directory(path: &Path) -> Result<(), Box<dyn std::error::Error>> 
         info!("Directory is empty, creating...");
         fs::create_dir(path)?;
     }
+    trace!("Successfully prepared directory for cloning");
     Ok(())
 }
