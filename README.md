@@ -1,6 +1,7 @@
 # Impactifier
 
-Impactifier is a tool designed to analyze and visualize the impact of code changes in monorepos, with an initial focus on CQRS architectures. It helps developers identify potential downstream effects of changes, allowing for more confident and efficient releases.
+Impactifier is a tool designed to analyze and visualize the impact of code changes, across the whole - possibly separated - codebase. 
+It helps developers identify potential downstream effects of changes, allowing for more reliable and frequent releases.
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -38,6 +39,35 @@ We want to support specyfing more detailed context of analysis, such as:
 
 ### CI/CD
 
+**Impactifier** main usage is designed to be CI/CD. 
+
+It supports both `pull_request` and`push` trigger actions.
+
+Simplified example:
+
+```yaml
+on: [push, pull_request]
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    needs: extract-info
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: run cli 
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            impactifier --from-branch ${{ $BRANCH_NAME }} --commit ${{ $COMMIT_SHA }}
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            impactifier --from-branch ${{ $BRANCH_NAME }} --to-branch ${{ $TARGET_BRANCH }}
+          fi
+```
+
+Flags information can easily be extracted inside the github action itself. 
+Full example can be found [here](github.com/wzslr321/impactifier/example/.github/impactifier-action.yaml)
+
+
 ### CLI 
 
 **Impactifier** can be used as a CLI tool.
@@ -61,6 +91,9 @@ To specify what exactly you want to analyze, you have a few options:
 - `--to-branch`: branch to compare the one from `--from_branch` with
 - `--commit-id`: specific commit to analze
     To specify the branch where the commit is located, use `--from-branch`
+
+To analyze local repository, you can specify `--path` flag. By default it checks both current directory,
+and the one above it, to handle both local & ci/cd usage.
 
 ## Contributing
 We welcome contributions to Impactifier! Please refer to our [Contributing Guidelines](CONTRIBUTING.md) for instructions on how to contribute.
