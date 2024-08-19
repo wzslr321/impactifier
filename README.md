@@ -10,6 +10,7 @@ It helps developers identify potential downstream effects of changes, allowing f
 4. [Getting Started](#getting-started)
    - [CI/CD](#cicd)
    - [CLI](#cli)
+   - [Configuration File](#configuration-file)
 6. [Contributing](#contributing)
 7. [License](#license)
 
@@ -95,11 +96,8 @@ To specify what exactly you want to analyze, you have a few options:
 To analyze local repository, you can specify `--path` flag. By default it checks both current directory,
 and the one above it, to handle both local & ci/cd usage.
 
-Configuration File
-Impactifier allows you to configure various options via a YAML configuration file. This file can define repository details, analysis options, and other settings that Impactifier uses during its operations. You can also override these configurations using CLI arguments and flags.
-
 ### Configuration File
-ALl necessary config can be passed via flags - which take highest priority - but config file is also supported.
+All necessary config can be passed via flags - which take highest priority - but config file is also supported.
 
 Below is an example of a impactifier-config.yaml file:
 
@@ -118,15 +116,15 @@ options:
 
 #### Configuration Options
 **repository:** Contains details about the repository to be analyzed.
-- url: The URL of the repository to clone. This can be omitted if you provide a path.
-- path: The path to a local repository. This can be used instead of cloning from a URL.
-- access_token: An optional access token used for cloning private repositories. This can be set via an environment variable (e.g., ${GITHUB_ACCESS_TOKEN}).
+- `url`: The URL of the repository to clone. This can be omitted if you provide a path.
+- `path`: The path to a local repository. This can be used instead of cloning from a URL.
+- `access_token`: An optional access token used for cloning private repositories. This can be set via an environment variable (e.g., `${GITHUB_ACCESS_TOKEN}`).
 
 **options:** General options for Impactifier.
-- on: A list of actions (push, pull_request) that trigger the analysis.
-- clone_into: Specifies the directory where the repository should be cloned.
+- `on`: A list of actions (push, pull_request) that trigger the analysis.
+- `clone_into`: Specifies the directory where the repository should be cloned.
 
-**Overriding Configuration with CLI Flags**
+#### Overriding Configuration with CLI Flags 
 While the configuration file provides a convenient way to manage settings, you can override any of these options directly from the command line using CLI flags. This allows for flexibility, especially when running Impactifier in different environments (e.g., local vs. CI/CD).
 
 For example:
