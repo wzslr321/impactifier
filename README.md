@@ -95,6 +95,59 @@ To specify what exactly you want to analyze, you have a few options:
 To analyze local repository, you can specify `--path` flag. By default it checks both current directory,
 and the one above it, to handle both local & ci/cd usage.
 
+Configuration File
+Impactifier allows you to configure various options via a YAML configuration file. This file can define repository details, analysis options, and other settings that Impactifier uses during its operations. You can also override these configurations using CLI arguments and flags.
+
+### Configuration File
+ALl necessary config can be passed via flags - which take highest priority - but config file is also supported.
+
+Below is an example of a impactifier-config.yaml file:
+
+```yaml
+repository:
+  url: "https://github.com/example/repository.git"
+  path: "/path/to/local/repository"
+  access_token: "${GITHUB_ACCESS_TOKEN}"
+
+options:
+  on:
+    - push
+    - pull_request
+  clone_into: "/tmp/clone"
+```
+
+#### Configuration Options
+**repository:** Contains details about the repository to be analyzed.
+- url: The URL of the repository to clone. This can be omitted if you provide a path.
+- path: The path to a local repository. This can be used instead of cloning from a URL.
+- access_token: An optional access token used for cloning private repositories. This can be set via an environment variable (e.g., ${GITHUB_ACCESS_TOKEN}).
+
+**options:** General options for Impactifier.
+- on: A list of actions (push, pull_request) that trigger the analysis.
+- clone_into: Specifies the directory where the repository should be cloned.
+
+**Overriding Configuration with CLI Flags**
+While the configuration file provides a convenient way to manage settings, you can override any of these options directly from the command line using CLI flags. This allows for flexibility, especially when running Impactifier in different environments (e.g., local vs. CI/CD).
+
+For example:
+```sh
+$ impactifier --config my-config.yaml --from-branch develop --to-branch main
+```
+
+In the above command:
+
+- `--config my-config.yaml`: Specifies a custom configuration file.
+- `--from-branch develop` and `--to-branch main`: Override the branches defined in the configuration file.
+
+**Priority Order**
+Impactifier follows a specific priority order when determining which settings to use:
+
+- CLI Arguments/Flags: Highest priority. Values provided here override both default settings and those in the configuration file.
+- Configuration File: If no CLI argument is provided for a setting, Impactifier looks for it in the configuration file.
+- Default Configuration File: If you don’t specify a configuration file with the --config flag, Impactifier looks for a file 
+named impactifier-config.yaml in the current working directory. If no file is found, it uses the default settings.
+- Defaults: If neither a CLI argument nor a configuration file value is provided, Impactifier falls back to its default settings.
+
 ## Contributing
 We welcome contributions to Impactifier! Please refer to our [Contributing Guidelines](CONTRIBUTING.md) for instructions on how to contribute.
 
