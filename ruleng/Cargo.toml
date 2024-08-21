@@ -1,0 +1,16 @@
+[package]
+name = "ruleng"
+version = "0.1.0"
+edition = "2021"
+description = "Rule Engine Language for impact analysis."
+license = "MIT"  
+
+[dependencies]
+regex = "1.9.5"
+lazy_static = "1.4.0"
+serde = { version = "1.0.208", features = ["derive"] }
+serde_yaml = "0.9.34"
+thiserror = "1.0.40"
+
+[dev-dependencies]
+assert_matches = "1.5.0"
