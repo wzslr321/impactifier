@@ -1,10 +1,12 @@
+use std::iter::Peekable;
+
 use crate::token::Token;
 
 pub struct Lexer<I>
 where
     I: Iterator<Item = char>,
 {
-    input: I,
+    input: Peekable<I>,
     current_char: Option<char>,
     position: TokenPosition,
     tokens: Vec<Token>,
@@ -18,7 +20,7 @@ where
         let current_char = input.next();
 
         Lexer {
-            input,
+            input: input.peekable(),
             current_char,
             position: TokenPosition::new(1, 0),
             tokens: vec![],
@@ -27,12 +29,37 @@ where
 
     pub fn scan(&mut self) -> &Vec<Token> {
         while let Ok(token) = self.scan_token() {
+            match token {
+                Token::Comment(_) => {}
+                Token::Whitespace => {}
+                _ => {
+                    self.tokens.push(token.clone());
+                }
+            }
             if token == Token::EOF {
-                self.tokens.push(token);
                 break;
             }
-            self.tokens.push(token);
-            self.advance();
+            match token {
+                Token::NumberLiteral(_) => {}
+                Token::StringLiteral(_) => {}
+                Token::Rule => {}
+                Token::Trigger => {}
+                Token::Transform => {}
+                Token::Match => {}
+                Token::Action => {}
+                Token::Let => {}
+                Token::If => {}
+                Token::Else => {}
+                Token::Fn => {}
+                Token::Enum => {}
+                Token::For => {}
+                Token::In => {}
+                Token::Import => {}
+                Token::Return => {}
+                Token::Identifier(_) => {}
+                Token::Comment(_) => {}
+                _ => self.advance(),
+            };
         }
 
         &self.tokens
@@ -69,10 +96,14 @@ where
                 '+' => Ok(Token::Plus),
                 '*' => Ok(Token::Asterisk),
                 '/' => {
+                    println!(" {:?} ", self.input.peek());
                     if self.match_next('/') {
                         self.handle_single_line_comment()
                     } else if self.match_next('*') {
                         self.handle_multi_line_comment()
+                    } else if self.match_next('\n') {
+                        self.advance();
+                        Ok(Token::Comment("*".to_string()))
                     } else {
                         Ok(Token::Slash)
                     }
@@ -84,10 +115,7 @@ where
                 '<' => self.handle_less(),
                 '>' => self.handle_greater(),
 
-                ' ' | '\t' | '\r' | '\n' => {
-                    self.advance();
-                    Ok(Token::Whitespace)
-                }
+                ' ' | '\t' | '\r' | '\n' => Ok(Token::Whitespace),
 
                 'a'..='z' | 'A'..='Z' => self.scan_identifier_or_keyword(),
 
@@ -299,15 +327,11 @@ where
         ))
     }
 
-    fn peek(&mut self) -> Option<char> {
-        self.input.next()
-    }
-
     fn match_next(&mut self, expected: char) -> bool {
-        let next = self.peek();
+        let next = self.input.peek();
         match next {
             Some(ch) => {
-                if ch == expected {
+                if *ch == expected {
                     self.advance();
                     return true;
                 }
@@ -408,20 +432,13 @@ mod tests {
         let tokens = lex(input);
         let expected = vec![
             Token::Let,
-            Token::Whitespace,
             Token::Identifier("myVar".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::NumberLiteral(42.0),
             Token::Semicolon,
-            Token::Whitespace,
             Token::Let,
-            Token::Whitespace,
             Token::Identifier("another_var".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::StringLiteral("hello".to_string()),
             Token::Semicolon,
             Token::EOF,
@@ -440,67 +457,40 @@ mod tests {
         let tokens = lex(input);
         let expected = vec![
             Token::Let,
-            Token::Whitespace,
             Token::Identifier("result".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::NumberLiteral(5.0),
-            Token::Whitespace,
             Token::Plus,
-            Token::Whitespace,
             Token::NumberLiteral(3.0),
-            Token::Whitespace,
             Token::Asterisk,
-            Token::Whitespace,
             Token::LeftParen,
             Token::NumberLiteral(10.0),
-            Token::Whitespace,
             Token::Slash,
-            Token::Whitespace,
             Token::NumberLiteral(2.0),
             Token::RightParen,
-            Token::Whitespace,
             Token::Minus,
-            Token::Whitespace,
             Token::NumberLiteral(7.0),
             Token::Semicolon,
-            Token::Whitespace,
             Token::Let,
-            Token::Whitespace,
             Token::Identifier("isEqual".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::LeftParen,
             Token::NumberLiteral(5.0),
-            Token::Whitespace,
             Token::Plus,
-            Token::Whitespace,
             Token::NumberLiteral(3.0),
             Token::RightParen,
-            Token::Whitespace,
             Token::Equal,
-            Token::Whitespace,
             Token::NumberLiteral(8.0),
             Token::Semicolon,
-            Token::Whitespace,
             Token::Let,
-            Token::Whitespace,
             Token::Identifier("isNotEqual".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::LeftParen,
             Token::NumberLiteral(10.0),
-            Token::Whitespace,
             Token::Minus,
-            Token::Whitespace,
             Token::NumberLiteral(2.0),
             Token::RightParen,
-            Token::Whitespace,
             Token::NotEqual,
-            Token::Whitespace,
             Token::NumberLiteral(5.0),
             Token::Semicolon,
             Token::EOF,
@@ -519,29 +509,18 @@ mod tests {
         let tokens = lex(input);
         let expected = vec![
             Token::Let,
-            Token::Whitespace,
             Token::Identifier("name".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::StringLiteral("John Doe".to_string()),
             Token::Semicolon,
-            Token::Whitespace,
             Token::Let,
-            Token::Whitespace,
             Token::Identifier("age".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::NumberLiteral(30.0),
             Token::Semicolon,
-            Token::Whitespace,
             Token::Let,
-            Token::Whitespace,
             Token::Identifier("pi".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::NumberLiteral(3.14159),
             Token::Semicolon,
             Token::EOF,
@@ -560,29 +539,16 @@ mod tests {
         "#;
         let tokens = lex(input);
         let expected = vec![
-            Token::Comment(" This is a single-line comment".to_string()),
-            Token::Whitespace,
             Token::Let,
-            Token::Whitespace,
             Token::Identifier("x".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::NumberLiteral(10.0),
             Token::Semicolon,
-            Token::Whitespace,
-            Token::Comment(" This is a\n            multi-line comment ".to_string()),
-            Token::Whitespace,
             Token::Let,
-            Token::Whitespace,
             Token::Identifier("y".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::Identifier("x".to_string()),
-            Token::Whitespace,
             Token::Plus,
-            Token::Whitespace,
             Token::NumberLiteral(5.0),
             Token::Semicolon,
             Token::EOF,
@@ -620,128 +586,79 @@ mod tests {
 
         let tokens = lex(input);
         let expected = vec![
-            Token::Whitespace, // Initial whitespace
+            // Initial whitespace
             Token::Rule,
-            Token::Whitespace,
             Token::StringLiteral("Detect API Changes".to_string()),
-            Token::Whitespace,
             Token::LeftBrace,
-            Token::Whitespace,
             Token::Trigger,
-            Token::Whitespace,
             Token::LeftBrace,
-            Token::Whitespace,
             Token::Identifier("path".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::StringLiteral("backend/**/*.go".to_string()),
-            Token::Whitespace,
             Token::Identifier("match".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::Identifier("regex".to_string()),
             Token::LeftParen,
             Token::StringLiteral(r"func (\w+)Handler".to_string()),
             Token::RightParen,
-            Token::Whitespace,
             Token::RightBrace,
-            Token::Whitespace,
             Token::Transform,
-            Token::Whitespace,
             Token::StringLiteral("toApiEndpoint".to_string()),
-            Token::Whitespace,
             Token::LeftBrace,
-            Token::Whitespace,
             Token::Identifier("input".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::StringLiteral("$1".to_string()),
-            Token::Whitespace,
             Token::Identifier("steps".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::LeftBracket,
-            Token::Whitespace,
             Token::LeftBrace,
             Token::Identifier("toLowerCase".to_string()),
             Token::RightBrace,
             Token::Comma,
-            Token::Whitespace,
             Token::LeftBrace,
             Token::Identifier("replace".to_string()),
             Token::Colon,
-            Token::Whitespace,
             Token::LeftBrace,
             Token::Identifier("pattern".to_string()),
             Token::Colon,
-            Token::Whitespace,
             Token::StringLiteral("Handler$".to_string()),
             Token::Comma,
-            Token::Whitespace,
             Token::Identifier("with".to_string()),
             Token::Colon,
-            Token::Whitespace,
             Token::StringLiteral("_endpoint".to_string()),
             Token::RightBrace,
             Token::RightBrace,
             Token::Comma,
-            Token::Whitespace,
             Token::LeftBrace,
             Token::Identifier("prepend".to_string()),
             Token::Colon,
-            Token::Whitespace,
             Token::StringLiteral("/api/".to_string()),
             Token::RightBrace,
-            Token::Whitespace,
             Token::RightBracket,
-            Token::Whitespace,
             Token::Identifier("output".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::StringLiteral("$result".to_string()),
-            Token::Whitespace,
             Token::RightBrace,
-            Token::Whitespace,
             Token::Match,
-            Token::Whitespace,
             Token::LeftBrace,
-            Token::Whitespace,
             Token::Identifier("path".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::StringLiteral("frontend/**/*.dart".to_string()),
-            Token::Whitespace,
             Token::Identifier("match".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::Identifier("regex".to_string()),
             Token::LeftParen,
             Token::StringLiteral("ApiClient.call('$transform')".to_string()),
             Token::RightParen,
-            Token::Whitespace,
             Token::RightBrace,
-            Token::Whitespace,
             Token::Action,
-            Token::Whitespace,
             Token::LeftBrace,
-            Token::Whitespace,
             Token::Identifier("alert".to_string()),
-            Token::Whitespace,
             Token::Assign,
-            Token::Whitespace,
             Token::Identifier("Alert".to_string()),
             Token::Dot,
             Token::Identifier("Severe".to_string()),
-            Token::Whitespace,
             Token::RightBrace,
-            Token::Whitespace,
             Token::RightBrace,
             Token::EOF,
         ];
