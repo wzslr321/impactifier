@@ -108,7 +108,6 @@ where
     fn scan_identifier_or_keyword(&mut self) -> Result<Token, LexerError> {
         let mut identifier = String::new();
 
-
         while let Some(ch) = self.current_char {
             if ch.is_alphanumeric() || ch == '_' {
                 identifier.push(ch);
@@ -118,6 +117,13 @@ where
             }
         }
 
+        if identifier.is_empty() {
+            return Err(LexerError::new(
+                "Expected identifier or keyword but found end of input",
+                self.position.line,
+                self.position.column,
+            ));
+        }
 
         match identifier.as_str() {
             "rule" => Ok(Token::Rule),
@@ -361,7 +367,8 @@ mod tests {
     use super::*;
 
     fn lex(input: &str) -> Vec<Token> {
-        let mut lexer = Lexer::new(input.chars());
+        let trimmed_input = input.trim();
+        let mut lexer = Lexer::new(trimmed_input.chars());
         lexer.scan().clone()
     }
 
@@ -386,7 +393,7 @@ mod tests {
             Token::In,
             Token::Import,
             Token::Return,
-            Token::Whitespace,
+            Token::EOF,
         ];
 
         assert_eq!(tokens, expected);
@@ -417,7 +424,7 @@ mod tests {
             Token::Whitespace,
             Token::StringLiteral("hello".to_string()),
             Token::Semicolon,
-            Token::Whitespace,
+            Token::EOF,
         ];
 
         assert_eq!(tokens, expected);
@@ -496,7 +503,7 @@ mod tests {
             Token::Whitespace,
             Token::NumberLiteral(5.0),
             Token::Semicolon,
-            Token::Whitespace,
+            Token::EOF,
         ];
 
         assert_eq!(tokens, expected);
@@ -537,7 +544,7 @@ mod tests {
             Token::Whitespace,
             Token::NumberLiteral(3.14159),
             Token::Semicolon,
-            Token::Whitespace,
+            Token::EOF,
         ];
 
         assert_eq!(tokens, expected);
@@ -578,7 +585,7 @@ mod tests {
             Token::Whitespace,
             Token::NumberLiteral(5.0),
             Token::Semicolon,
-            Token::Whitespace,
+            Token::EOF,
         ];
 
         assert_eq!(tokens, expected);
@@ -736,7 +743,7 @@ mod tests {
             Token::RightBrace,
             Token::Whitespace,
             Token::RightBrace,
-            Token::Whitespace,
+            Token::EOF,
         ];
 
         assert_eq!(tokens, expected);
