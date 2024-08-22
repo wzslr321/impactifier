@@ -389,6 +389,8 @@ impl TokenPosition {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(test)]
+    use pretty_assertions::assert_eq;
 
     fn lex(input: &str) -> Vec<Token> {
         let trimmed_input = input.trim();
@@ -595,7 +597,7 @@ mod tests {
             Token::Identifier("path".to_string()),
             Token::Assign,
             Token::StringLiteral("backend/**/*.go".to_string()),
-            Token::Identifier("match".to_string()),
+            Token::Match,
             Token::Assign,
             Token::Identifier("regex".to_string()),
             Token::LeftParen,
@@ -644,7 +646,7 @@ mod tests {
             Token::Identifier("path".to_string()),
             Token::Assign,
             Token::StringLiteral("frontend/**/*.dart".to_string()),
-            Token::Identifier("match".to_string()),
+            Token::Match,
             Token::Assign,
             Token::Identifier("regex".to_string()),
             Token::LeftParen,
