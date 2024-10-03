@@ -1,0 +1,29 @@
+# rules:
+#   - name: "Detect API Changes"
+#     trigger:
+#       path: "api/"
+#       pattern: "func (\\w+)Handler"
+#       analyze_dependencies: true
+#     transform:
+#       name: "toApiEndpoint"
+#       steps:
+#         - toLowerCase
+#         - replace:
+#             pattern: "Handler$"
+#             with: "_endpoint"
+#         - prepend: "/api/"
+#     match:
+#       path: "client/"
+#       pattern: "ApiClient.call('$transform')"
+#     action:
+#       alert_level: "Severe"
+#       message: "API changed"
+repository:
+  url: "https://github.com/wzslr321/cereb-os" 
+  access_token: ${GITHUB_ACCESS_TOKEN}
+  branch: "trunk"
+options:
+  on: 
+    - push
+    - pull_request
+  clone_into: "./repo"

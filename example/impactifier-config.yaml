@@ -1,7 +1,7 @@
 repository:
-  url: "https://github.com/wzslr321/cereb-os" 
-  access_token: ${GITHUB_ACCESS_TOKEN}
-  branch: "trunk"
+  url: "https://github.com/wzslr321/impactifier" 
+  access_token: ${{ secrets.GITHUB_TOKEN }} 
+  branch: "main"
 options:
   on: 
     - push
