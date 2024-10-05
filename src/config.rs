@@ -11,6 +11,7 @@ use url::Url;
 pub struct Config {
     pub repository: RepositoryConfig,
     pub options: OptionsConfig,
+    pub rules: Vec<Rule>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,12 +55,6 @@ pub struct Transform {
     pub steps: Option<Vec<TransfromStep>>,
 }
 
-
-#[derive(Debug, Deserialize)]
-pub struct Rules {
-    pub values: Vec<Rule>,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct Matcher {
     pub path: PathBuf,
@@ -79,14 +74,13 @@ pub struct Action {
     pub message: String,
 }
 
-
 #[derive(Debug, Deserialize)]
 pub struct Rule {
     pub name: String,
     pub trigger: Trigger,
     pub transform: Transform,
     pub matcher: Matcher,
-    pub actio: Action,
+    pub action: Action,
 }
 
 
@@ -141,8 +135,8 @@ impl fmt::Display for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Config {{ repository: {}, options: {:?} }}",
-            self.repository, self.options
+            "Config {{ repository: {}, options: {:?}, rules: {:?} }}",
+            self.repository, self.options, self.rules,
         )
     }
 }
