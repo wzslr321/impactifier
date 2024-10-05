@@ -22,11 +22,6 @@ jobs:
         with:
           fetch-depth: 0 
 
-      # - name: Set Up Rust
-      #   uses: actions/setup-rust@v1
-      #   with:
-      #     rust-version: stable
-
       - name: Cache Cargo Registry
         uses: actions/cache@v3
         with:
@@ -52,13 +47,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./target/release/impactifier --config impactifier-config.yaml
-
-      # - name: Upload Report
-      #   if: always()
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: impactifier-report
-      #     path: ./reports/
 
       - name: Post Comment on Pull Request
         if: github.event_name == 'pull_request'
