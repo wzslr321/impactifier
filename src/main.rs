@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod git;
 mod utils;
+mod transform;
 
 use std::error::Error;
 

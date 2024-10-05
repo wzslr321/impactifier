@@ -1,8 +1,9 @@
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer };
 use std::cmp;
 use std::env;
 use std::fmt;
 use std::path::Path;
+use std::path::PathBuf;
 use tracing::debug;
 use url::Url;
 
@@ -14,24 +15,80 @@ pub struct Config {
 
 #[derive(Debug, Deserialize)]
 pub struct RepositoryConfig {
-    #[serde(deserialize_with = "deserialize_url")]
+    #[serde(deserialize_with = "deserialize_url", default)]
     pub url: Option<Url>,
     pub path: Option<Box<Path>>,
     pub access_token: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TriggerAction {
-    Push,
-    PullRequest,
+    pub branch: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct OptionsConfig {
-    pub on: Vec<TriggerAction>,
     pub clone_into: Option<Box<Path>>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct Trigger {
+    pub path: Box<Path>,
+
+    #[serde(default)]
+    pub pattern: Option<String>,
+    
+    #[serde(default)]
+    pub analyze_dependencies: bool,
+}
+
+
+#[derive(Debug, Deserialize)]
+pub struct TransfromStep {
+    pub name: String,
+    #[serde(default)]
+    pub args: Option<serde_yaml::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Transform {
+    pub name: String,
+
+    #[serde(default)]
+    pub steps: Option<Vec<TransfromStep>>,
+}
+
+
+#[derive(Debug, Deserialize)]
+pub struct Rules {
+    pub values: Vec<Rule>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Matcher {
+    pub path: PathBuf,
+    pub pattern: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub enum AlertLevel {
+    Info, 
+    Warn,
+    Severe,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Action {
+    pub alert_level: AlertLevel,
+    pub message: String,
+}
+
+
+#[derive(Debug, Deserialize)]
+pub struct Rule {
+    pub name: String,
+    pub trigger: Trigger,
+    pub transform: Transform,
+    pub matcher: Matcher,
+    pub actio: Action,
+}
+
 
 impl Config {
     pub fn load_from_file(file_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
