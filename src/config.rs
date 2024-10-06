@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer };
+use serde::{Deserialize, Deserializer};
 use std::cmp;
 use std::env;
 use std::fmt;
@@ -34,14 +34,13 @@ pub struct Trigger {
 
     #[serde(default)]
     pub pattern: Option<String>,
-    
+
     #[serde(default)]
     pub analyze_dependencies: bool,
 }
 
-
 #[derive(Debug, Deserialize)]
-pub struct TransfromStep {
+pub struct TransformStep {
     pub name: String,
     #[serde(default)]
     pub args: Option<serde_yaml::Value>,
@@ -52,7 +51,7 @@ pub struct Transform {
     pub name: String,
 
     #[serde(default)]
-    pub steps: Option<Vec<TransfromStep>>,
+    pub steps: Vec<TransformStep>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,7 +62,7 @@ pub struct Matcher {
 
 #[derive(Debug, Deserialize)]
 pub enum AlertLevel {
-    Info, 
+    Info,
     Warn,
     Severe,
 }
@@ -83,6 +82,10 @@ pub struct Rule {
     pub action: Action,
 }
 
+pub struct CustomStep {
+    pub name: String,
+    pub script: String,
+}
 
 impl Config {
     pub fn load_from_file(file_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
@@ -102,6 +105,34 @@ impl Config {
         debug!("Deserialized config:\n{}", cfg);
 
         Ok(cfg)
+    }
+
+    pub fn custom_transform_scripts(&self) -> Option<Vec<CustomStep>> {
+        // Iterate over all rules and their transform steps
+        let scripts: Vec<CustomStep> = self
+            .rules
+            .iter()
+            .flat_map(|rule| &rule.transform.steps) // Flatten all steps from all rules
+            .filter(|step| step.name.starts_with("custom") && step.args.is_some()) // Filter steps with names starting with "custom"
+            .filter_map(|step| {
+                // TODO(wiktor.zajac) cringe, fix
+                Some(CustomStep {
+                    name: step.name.to_owned(),
+                    script: step
+                        .args
+                        .as_ref()
+                        .and_then(|args| args.get("script"))
+                        .and_then(|script_value| script_value.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap()
+                })
+            })
+            .collect();
+
+        match &scripts.is_empty() {
+            true => None,
+            false => Some(scripts),
+        }
     }
 }
 

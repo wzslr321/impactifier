@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::config::{Config, RepositoryConfig};
 use crate::git::clone_repo;
+use crate::transform::init_registry;
 use crate::utils;
 
 #[derive(Parser, Debug)]
@@ -71,24 +72,27 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     setup_logging(args.tracing_level);
 
-    let config = match load_config(Path::new(&args.config)) {
+    let cfg = match load_config(Path::new(&args.config)) {
         Ok(config) => config,
         Err(e) => return Err(e),
     };
 
-    match &config.repository.url {
+    init_registry(cfg.custom_transform_scripts());
+
+
+    match &cfg.repository.url {
         Some(url) => {
             let _ = try_analyze_from_url(
                 url.as_str(),
                 args.from_branch,
                 args.to_branch,
                 args.of_commit,
-                config.options.clone_into,
-                &config.repository,
+                cfg.options.clone_into,
+                &cfg.repository,
             );
         }
         None => {
-            match &config.repository.path {
+            match &cfg.repository.path {
                 Some(path) => {
                     let _ = try_analyze_from_path(
                         (*path)
@@ -97,7 +101,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         args.from_branch,
                         args.to_branch,
                         args.of_commit,
-                        &config.repository,
+                        &cfg.repository,
                     );
                 }
                 None => {
@@ -225,3 +229,5 @@ fn load_config(path: &Path) -> Result<Config, Box<dyn std::error::Error>> {
         }
     }
 }
+
+
