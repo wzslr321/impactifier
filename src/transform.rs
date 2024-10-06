@@ -1,3 +1,4 @@
+use crate::config::CustomStep;
 use rhai::{Dynamic, Engine, Map, Scope};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -22,6 +23,28 @@ pub trait TransformFn {
 
 lazy_static::lazy_static! {
     static ref TRANSFORM_REGISTRY: Mutex<HashMap<String, Box<dyn TransformFn + Send + Sync>>> = Mutex::new(HashMap::new());
+}
+
+fn register_transform(name: &str, func: Box<dyn TransformFn + Send + Sync>) {
+    TRANSFORM_REGISTRY
+        .lock()
+        .unwrap()
+        .insert(name.to_string(), func);
+}
+
+pub fn init_registry(custom_steps: Option<Vec<CustomStep>>) {
+    register_transform("toUpperCase", Box::new(ToLowerCase));
+    register_transform("replace", Box::new(Replace));
+    if let Some(steps) = custom_steps {
+        for step in steps {
+            register_transform(
+                &step.name,
+                Box::new(CustomFunction {
+                    script: step.script.to_string(),
+                }),
+            );
+        }
+    }
 }
 
 pub struct ToLowerCase;
