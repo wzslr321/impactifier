@@ -1,16 +1,18 @@
+use core::fmt;
 use std::path::Path;
 
 use clap::Parser;
 use git2::Repository;
+use thiserror::Error;
 use tracing::{error, info, trace, Level};
+use url::Url;
 use uuid::Uuid;
 
-use crate::config::{Config, RepositoryConfig};
-use crate::git::clone_repo;
 use crate::transform::init_registry;
 use crate::utils;
+use crate::{config::Config, git::clone_repo};
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(
     version,
     about = "Impactifier is a tool for analyzing code changes and assessing their impact.",
@@ -26,7 +28,7 @@ use crate::utils;
     creates repository struct from local path
     from_branch fallbacks to default after opening
     if branches specified & local changes detected, optionally includes those
-    if no branch & commit specified, tries to analyze local changes
+    if no branch & commit specified, tries (not yet) to analyze local changes
     if no local changes fails as there is nothing to compare
 "#
 )]
@@ -38,16 +40,23 @@ struct Args {
     #[arg(short, long, default_value_t = String::from("impactifier-config.yaml"))]
     config: String,
 
+    /// From what branch changes should be compared.
+    ///
+    /// Defaults to the current branch.
     #[arg(short, long)]
     from_branch: Option<String>,
 
+    /// To what branch changes should be compared
     #[arg(long)]
     to_branch: Option<String>,
 
+    /// Commit of which changes should be analyzed. Takes precedence over
+    /// branch changes, if `from_branch` or `to_branch` is specified.
     #[arg(long)]
     of_commit: Option<String>,
 
-    #[arg(long, help = "Fetch latest changes before comparison")]
+    /// Fetch last changes before impact analysis
+    #[arg(long)]
     fetch: bool,
 
     /// Sets max tracing level. Available options:
@@ -61,9 +70,19 @@ struct Args {
     tracing_level: u8,
 }
 
-pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), CliError> {
     let args = Args::parse();
     setup_logging(args.tracing_level);
+
+    match check_args_validity(args.clone()) {
+        Ok(_) => {
+            trace!("args validation completed successfully. Continuing execution.");
+        }
+        Err(err) => {
+            error!("args are invalid. Exiting...");
+            return Err(err)
+        }
+    }
 
     let cfg = match load_config(Path::new(&args.config)) {
         Ok(config) => config,
@@ -73,21 +92,16 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     init_registry(cfg.custom_transform_scripts());
 
     let _repository = match &cfg.repository.url {
-        Some(url) => {
-            match try_retrieve_repo_from_url(
-                url.as_str(),
-                args.from_branch,
-                args.to_branch,
-                args.of_commit,
-                cfg.options.clone_into,
-                &cfg.repository,
-            ) {
-                Ok(repo) => repo,
-                Err(_) => {
-                    return Err(Box::from("Either repository url or path must be specified"));
-                }
+        Some(url) => match try_retrieve_repo_from_url(
+            cfg.repository.access_token,
+            url,
+            cfg.options.clone_into,
+        ) {
+            Ok(repo) => repo,
+            Err(_) => {
+                return Err(CliError::Unknown);
             }
-        }
+        },
         None => match &cfg.repository.path {
             Some(path) => {
                 match try_retrieve_repo_from_path(
@@ -97,18 +111,43 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 ) {
                     Ok(repo) => repo,
                     Err(_) => {
-                        return Err(Box::from("Either repository url or path must be specified"));
+                        return Err(CliError::IncorrectArgs {
+                            msg: "Either repository url or path must be specified".to_string(),
+                        });
                     }
                 }
             }
             None => {
                 error!("Repository url and path are unspecified");
-                return Err(Box::from("Either repository url or path must be specified"));
+                return Err(CliError::InvalidConfigPath);
             }
         },
     };
 
     Ok(())
+}
+
+fn check_args_validity(args: Args) -> Result<(), CliError> {
+    match (&args.from_branch, &args.to_branch) {
+        (None, None) => {
+            info!("No branches specified");
+            match &args.of_commit {
+                Some(_) => Ok(()),
+                None => {
+                    error!("No commit specified. Nothing to analyze");
+                    Err(CliError::InsufficientArgs)
+                }
+            }
+        }
+        (None, Some(_)) => Ok(()),
+        (Some(_), None) => {
+            error!("from_branch specified, but to_branch is missing");
+            Err(CliError::IncorrectArgs {
+                msg: "Specifying `from_branch` requires `to_branch` to be specified".to_string(),
+            })
+        }
+        (Some(_), Some(_)) => Ok(()),
+    }
 }
 
 fn try_retrieve_repo_from_path(path: &str) -> Result<Repository, Box<dyn std::error::Error>> {
@@ -120,62 +159,32 @@ fn try_retrieve_repo_from_path(path: &str) -> Result<Repository, Box<dyn std::er
 }
 
 fn try_retrieve_repo_from_url(
-    url: &str,
-    from_branch: Option<String>,
-    to_branch: Option<String>,
-    commit_id: Option<String>,
+    access_token: Option<String>,
+    url: &Url,
     clone_into: Option<Box<Path>>,
-    config: &RepositoryConfig,
 ) -> Result<Repository, Box<dyn std::error::Error>> {
     trace!("attempt to start from url-specified repository");
-    match (from_branch, to_branch) {
-        (None, None) => {
-            info!("No branches specified");
-            match commit_id {
-                Some(_commit_id) => todo!(), //try_analyze_commit(&commit_id),
-                None => {
-                    error!("No commit specified. Nothing to analyze");
-                    Err(Box::from(
-                        "No branches and no commit specified. Nothing to analyze.",
-                    ))
-                }
-            }
-        }
-        (None, Some(_)) => todo!(),
-        (Some(_), None) => {
-            error!("Incorrect CLI arguments. Specifying `from_branch` requires `to_branch` to be specified");
-            Err(Box::from("Incorrect arguments"))
-        }
-        (Some(from_branch), Some(to_branch)) => {
-            info!(
-                "Attempting to compare branch {} with branch {}",
-                from_branch, to_branch
-            );
-            info!("Attempting to clone repository from url: {}", url);
-            let clone_into_path = &clone_into.unwrap_or_else(|| {
-                let path = Path::new(&format!("repository{}", Uuid::new_v4())).into();
-                trace!("set fallback clone_into path to {:?}", path);
-                path
-            });
-            match utils::prepare_directory(&clone_into_path) {
-                Ok(_) => {
-                    trace!("Starting to clone repository");
-                    let cloned_repo =
-                        match clone_repo(&config, &clone_into_path, Some(&from_branch)) {
-                            Ok(repo) => repo,
-                            Err(e) => {
-                                error!("Failed to clone repository. error: {}", e);
-                                return Err(e.into());
-                            }
-                        };
-                    info!("Repository cloned successfuly");
-                    Ok(cloned_repo)
-                }
+    let clone_into_path = &clone_into.unwrap_or_else(|| {
+        let path = Path::new(&format!("repository{}", Uuid::new_v4())).into();
+        trace!("set fallback clone_into path to {:?}", path);
+        path
+    });
+    match utils::prepare_directory(&clone_into_path) {
+        Ok(_) => {
+            trace!("Starting to clone repository");
+            let cloned_repo = match clone_repo(access_token, url, &clone_into_path) {
+                Ok(repo) => repo,
                 Err(e) => {
-                    error!("Failed to prepare directory for cloning");
+                    error!("Failed to clone repository. error: {}", e);
                     return Err(e.into());
                 }
-            }
+            };
+            info!("Repository cloned successfuly");
+            Ok(cloned_repo)
+        }
+        Err(e) => {
+            error!("Failed to prepare directory for cloning");
+            return Err(e.into());
         }
     }
 }
@@ -203,16 +212,28 @@ fn setup_logging(tracing_level: u8) {
         .init();
 }
 
-fn load_config(path: &Path) -> Result<Config, Box<dyn std::error::Error>> {
+fn load_config(path: &Path) -> Result<Config, CliError> {
     trace!("Starting loading config from {:?}", path);
     match Config::load_from_file(path) {
         Ok(config) => {
             info!("Config loaded successfully");
             Ok(config)
         }
-        Err(e) => {
+        Err(_) => {
             error!("Failed to read configuration from {:?}", path);
-            return Err(e.into());
+            return Err(CliError::InvalidConfigPath);
         }
     }
+}
+
+#[derive(Error, Debug)]
+pub enum CliError {
+    #[error("No branches and no commit specified. No local changes detected. Nothing to analyze.")]
+    InsufficientArgs,
+    #[error("Incorrect CLI arguments.{}", msg)]
+    IncorrectArgs { msg: String },
+    #[error("Config can not be retrieved")]
+    InvalidConfigPath,
+    #[error("Unknown error")]
+    Unknown,
 }

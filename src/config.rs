@@ -20,7 +20,6 @@ pub struct RepositoryConfig {
     pub url: Option<Url>,
     pub path: Option<Box<Path>>,
     pub access_token: Option<String>,
-    pub branch: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,6 +87,7 @@ pub struct CustomStep {
 }
 
 impl Config {
+    // TODO(wiktor.zajac) improve error handling
     pub fn load_from_file(file_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let yaml_content = match std::fs::read_to_string(file_path) {
             Ok(content) => {

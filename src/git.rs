@@ -1,35 +1,45 @@
 use std::{env, path::Path};
+use thiserror::Error;
 
 use git2::{Cred, RemoteCallbacks, Repository};
-use tracing::error;
+use url::Url;
 
-use crate::config::RepositoryConfig;
+#[derive(Error, Debug)]
+pub enum GitError {
+    #[error("Failed to authorize git request, due to authentication failure")]
+    NoAccess,
+    #[error(
+        "Failed to clone repository from url {} to given path: {}.\nError: {}",
+        url,
+        path,
+        err,
+    )]
+    CloneFailure {
+        url: String,
+        path: String,
+        err: git2::Error,
+    },
+}
 
 pub fn clone_repo(
-    options: &RepositoryConfig,
-    clone_into: &Path,
-    branch: Option<&str>,
-) -> Result<Repository, Box<dyn std::error::Error>> {
-    let token = match options.access_token.to_owned() {
+    access_token: Option<String>,
+    url: &Url,
+    clone_into: &Box<Path>,
+) -> Result<Repository, GitError> {
+    let token = match access_token.to_owned() {
         Some(token) => token,
         None => match env::var("GITHUB_ACCESS_TOKEN_2") {
             Ok(token) => token,
-            Err(_) => {
-                return Err(Box::from("No access token provided"));
-            }
+            Err(_) => return Err(GitError::NoAccess),
         },
     };
 
     let mut callbacks = RemoteCallbacks::new();
     callbacks.credentials(|_url, _username_from_url, _allowed_types| {
-        Cred::userpass_plaintext("wzslr321", &token) 
+        Cred::userpass_plaintext("wzslr321", &token)
     });
 
     let mut builder = git2::build::RepoBuilder::new();
-    builder.bare(true);
-    if let Some(branch) = branch {
-        builder.branch(&branch);
-    }
 
     let mut fetch_options = git2::FetchOptions::new();
     fetch_options.remote_callbacks(callbacks);
@@ -37,14 +47,13 @@ pub fn clone_repo(
 
     builder.fetch_options(fetch_options);
 
-    match &options.url {
-        Some(url) => match builder.clone(url.as_str(), &clone_into) {
-            Ok(repository) => Ok(repository),
-            Err(e) => Err(e.into()),
-        },
-        None => {
-            error!("Failed to clone the repository. Url not specified.");
-            Err(Box::from("Repository url not specified"))
-        }
+
+    match builder.clone(url.as_str(), &clone_into) {
+        Ok(repository) => Ok(repository),
+        Err(e) => Err(GitError::CloneFailure{
+            url: url.to_string(),
+            path: String::from(clone_into.to_string_lossy()),
+            err: e,
+        }),
     }
 }
