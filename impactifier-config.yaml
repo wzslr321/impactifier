@@ -1,6 +1,5 @@
-# Useful mostly for local 
 repository:
-  path: "./"
+  url: "https://github.com/wzslr321/impactifier"
   branch: "main"
 options:
   clone_into: "./repo"

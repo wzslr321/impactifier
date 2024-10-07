@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{env, path::Path};
 
 use git2::{Cred, RemoteCallbacks, Repository};
 use tracing::error;
@@ -10,16 +10,19 @@ pub fn clone_repo(
     clone_into: &Path,
     branch: Option<&str>,
 ) -> Result<Repository, Box<dyn std::error::Error>> {
-    let token = match &options.access_token {
+    let token = match options.access_token.to_owned() {
         Some(token) => token,
-        None => {
-            return Err(Box::from("No access token provided"));
-        }
+        None => match env::var("GITHUB_ACCESS_TOKEN_2") {
+            Ok(token) => token,
+            Err(_) => {
+                return Err(Box::from("No access token provided"));
+            }
+        },
     };
 
     let mut callbacks = RemoteCallbacks::new();
     callbacks.credentials(|_url, _username_from_url, _allowed_types| {
-        Cred::userpass_plaintext(&token, "")
+        Cred::userpass_plaintext("wzslr321", &token) 
     });
 
     let mut builder = git2::build::RepoBuilder::new();
