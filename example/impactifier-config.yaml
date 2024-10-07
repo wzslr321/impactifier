@@ -1,9 +1,0 @@
-repository:
-  url: "https://github.com/wzslr321/impactifier" 
-  access_token: ${{ secrets.GITHUB_TOKEN }} 
-  branch: "main"
-options:
-  on: 
-    - push
-    - pull_request
-  clone_into: "./repo"
