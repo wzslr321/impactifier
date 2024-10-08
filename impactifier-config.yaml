@@ -1,6 +1,5 @@
 repository:
   url: "https://github.com/wzslr321/impactifier"
-  branch: "main"
 options:
   clone_into: "./repo"
 
@@ -36,4 +35,3 @@ rules:
     action:
       alert_level: "Severe"
       message: "API changed"
-
