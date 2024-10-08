@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::transform::init_registry;
 use crate::utils;
-use crate::{config::Config, git::clone_repo, git::open_repo};
+use crate::{config::Config, git::clone_repo, git::extract_difference, git::open_repo};
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -69,6 +69,19 @@ struct Args {
     tracing_level: u8,
 }
 
+pub enum Credentials<'a> {
+    UsernamePassword {
+        username: &'a str,
+        password: &'a str,
+    },
+    SshKey {
+        username: String,
+        public_key_path: String,
+        private_key_path: String,
+        passphrase: Option<String>,
+    },
+}
+
 pub fn run() -> Result<(), CliError> {
     let args = Args::parse();
     setup_logging(args.tracing_level);
@@ -90,7 +103,7 @@ pub fn run() -> Result<(), CliError> {
 
     init_registry(cfg.custom_transform_scripts());
 
-    let _repository = match cfg.repository.url {
+    let repository = match cfg.repository.url {
         Some(url) => match try_retrieve_repo_from_url(
             cfg.repository.access_token,
             "wzslr321",
@@ -98,8 +111,8 @@ pub fn run() -> Result<(), CliError> {
             cfg.options.clone_into,
         ) {
             Ok(repo) => repo,
-            Err(_) => {
-                return Err(CliError::Unknown);
+            Err(e) => {
+                return Err(e);
             }
         },
         None => match cfg.repository.path {
@@ -118,6 +131,8 @@ pub fn run() -> Result<(), CliError> {
             }
         },
     };
+
+    let _ = extract_difference(&repository);
 
     Ok(())
 }
@@ -151,10 +166,13 @@ fn try_retrieve_repo_from_path(path: Box<Path>) -> Result<Repository, CliError> 
         Ok(repository) => {
             info!("sucessfully retrieved repository from path");
             Ok(repository)
-        } 
-        Err(err) =>  {
-            error!("failed to retrieve repository from path: {}", String::from((*path).to_string_lossy()));
-            Err(CliError::IncorrectArgs{
+        }
+        Err(err) => {
+            error!(
+                "failed to retrieve repository from path: {}",
+                String::from((*path).to_string_lossy())
+            );
+            Err(CliError::IncorrectArgs {
                 msg: "Failed to retireve repository from path".to_string(),
                 err: Some(err.into()),
             })
@@ -167,29 +185,44 @@ fn try_retrieve_repo_from_url(
     username: &str,
     url: &Url,
     clone_into: Option<Box<Path>>,
-) -> Result<Repository, Box<dyn std::error::Error>> {
+) -> Result<Repository, CliError> {
     trace!("attempt to start from url-specified repository");
     let clone_into_path = &clone_into.unwrap_or_else(|| {
         let path = Path::new(&format!("repository{}", Uuid::new_v4())).into();
         trace!("set fallback clone_into path to {:?}", path);
         path
     });
+
     match utils::prepare_directory(&clone_into_path) {
         Ok(_) => {
             trace!("Starting to clone repository");
-            let cloned_repo = match clone_repo(access_token, username, url, &clone_into_path) {
+
+            let credentials = Credentials::UsernamePassword {
+                username,
+                password: &access_token.unwrap_or_else(|| "OnlyForTesting".to_string()), // expect("access_token must be specified, as it is the only supported authentication method for now"),
+            };
+            let cloned_repo = match clone_repo(&credentials, url, &clone_into_path) {
                 Ok(repo) => repo,
                 Err(e) => {
-                    error!("Failed to clone repository. error: {}", e);
-                    return Err(e.into());
+                    error!("Failed to retreive repository from url.\nError: {}", e);
+                    let err = match e {
+                        crate::git::GitError::NoAccess { err } => CliError::InvalidArgs {
+                            err: Some(err.into()),
+                        },
+
+                        _ => CliError::Unknown {
+                            err: Some(e.into()),
+                        },
+                    };
+                    return Err(err);
                 }
             };
-            info!("Repository cloned successfuly");
+            info!("Repository retrieved successfuly from url");
             Ok(cloned_repo)
         }
-        Err(e) => {
+        Err(err) => {
             error!("Failed to prepare directory for cloning");
-            return Err(e.into());
+            return Err(CliError::Unknown { err: Some(err) });
         }
     }
 }
@@ -228,9 +261,14 @@ pub enum CliError {
     #[error("No branches and no commit specified. No local changes detected. Nothing to analyze.")]
     InsufficientArgs,
     #[error("Incorrect CLI arguments.{}\nError:{:?}", msg, err)]
-    IncorrectArgs { msg: String, err: Option<anyhow::Error>},
+    IncorrectArgs {
+        msg: String,
+        err: Option<anyhow::Error>,
+    },
+    #[error("Invalid arguments. Error:{:?}", err)]
+    InvalidArgs { err: Option<anyhow::Error> },
     #[error("Config can not be retrieved")]
     InvalidConfigPath { err: Option<anyhow::Error> },
-    #[error("Unknown error")]
-    Unknown,
+    #[error("Unknown error: {:?}", err)]
+    Unknown { err: Option<anyhow::Error> },
 }

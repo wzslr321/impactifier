@@ -1,7 +1,7 @@
 use std::{fs, path::Path};
 use tracing::{info, trace};
 
-pub fn prepare_directory(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn prepare_directory(path: &Path) -> Result<(), anyhow::Error> {
     if path.exists() {
         if path.read_dir()?.next().is_some() {
             info!("Directory is not empty, removing existing files...");

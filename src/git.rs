@@ -1,14 +1,16 @@
-use std::{env, path::Path};
+use std::path::Path;
 use thiserror::Error;
 
 use git2::{Cred, RemoteCallbacks, Repository};
 use tracing::{error, info, trace};
 use url::Url;
 
+use crate::cli::Credentials;
+
 #[derive(Error, Debug)]
 pub enum GitError {
-    #[error("Failed to authorize git request, due to authentication failure. Error:{msg}")]
-    NoAccess { msg: String },
+    #[error("Failed to authorize git request, due to authentication failure. Error:{err}")]
+    NoAccess { err: git2::Error },
     #[error(
         "Failed to clone repository from url {} to given path: {}.\nError: {}",
         url,
@@ -22,6 +24,14 @@ pub enum GitError {
     },
     #[error("Failed to open repository from path: {}. Error: {}", path, err)]
     OpenRepositoryFailure { path: String, err: git2::Error },
+    // #[error("Unknown error: {}", *err)]
+    // Unknown { err: Box<dyn std::error::Error> },
+}
+
+pub struct FileDiff {}
+
+pub fn extract_difference(_repo: &Repository) -> Result<Vec<FileDiff>, GitError> {
+    todo!()
 }
 
 pub fn open_repo(path: &Path) -> Result<Repository, GitError> {
@@ -42,37 +52,45 @@ pub fn open_repo(path: &Path) -> Result<Repository, GitError> {
     }
 }
 
+impl Credentials<'_> {
+    fn into(&self) -> Result<Cred, git2::Error> {
+        let credentials = match self {
+            Credentials::UsernamePassword { username, password } => {
+                Cred::userpass_plaintext(&username, &password)
+            }
+            Credentials::SshKey {
+                username,
+                public_key_path,
+                private_key_path,
+                passphrase,
+            } => Cred::ssh_key(
+                &username,
+                Some(Path::new(public_key_path)),
+                Path::new(private_key_path),
+                passphrase.as_deref(),
+            ),
+        };
+
+        match credentials {
+            Ok(credentials) => Ok(credentials),
+            Err(err) => Err(err),
+        }
+    }
+}
+
 pub fn clone_repo(
-    access_token: Option<String>,
-    username: &str,
+    credentials: &Credentials,
     url: &Url,
     clone_into: &Box<Path>,
 ) -> Result<Repository, GitError> {
     info!("start cloning repository");
-
-    trace!("try retrieve access token");
-    let token = match access_token.to_owned() {
-        Some(token) => token,
-        None => match env::var("GITHUB_ACCESS_TOKEN") {
-            Ok(token) => token,
-            Err(_) => {
-                error!("failed to retrieve access token");
-                return Err(GitError::NoAccess {
-                    msg: "Access token unspecified".to_string(),
-                });
-            }
-        },
-    };
-    trace!("Retrieved token successfully");
 
     let mut callbacks = RemoteCallbacks::new();
     // TODO(wiktor.zajac) [https://github.com/wzslr321/impactifier/issues/9]
     // Support different credentials for git access
     //
     // Additionally, it can probably be extracted to a separate util
-    callbacks.credentials(|_url, _username_from_url, _allowed_types| {
-        Cred::userpass_plaintext(username, &token)
-    });
+    callbacks.credentials(|_url, _username_from_url, _allowed_types| credentials.into());
     trace!("Callback credentials set to userpass_plaintext");
 
     let mut builder = git2::build::RepoBuilder::new();
@@ -93,11 +111,15 @@ pub fn clone_repo(
         }
         Err(e) => {
             error!("failed to clone repository");
-            Err(GitError::CloneFailure {
-                url: url.to_string(),
-                path: String::from(clone_into.to_string_lossy()),
-                err: e,
-            })
+            let err = match e.code() {
+                git2::ErrorCode::Auth => GitError::NoAccess { err: e },
+                _ => GitError::CloneFailure {
+                    url: url.to_string(), 
+                    path: String::from(clone_into.to_string_lossy()),
+                    err: e,
+                },
+            };
+            Err(err)
         }
     }
 }
