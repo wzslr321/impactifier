@@ -1,25 +1,40 @@
 # Impactifier
 
-Impactifier is a tool designed to analyze and visualize the impact of code changes, across the whole - possibly separated - codebase. 
-It helps developers identify potential downstream effects of changes, allowing for more reliable and frequent releases.
+Impactifier is a tool designed to analyze the impact of code changes, across the whole - possibly separated - codebase, and allow to take various actions based on that. It aims to help developers identify potential downstream effects of changes, allowing for more reliable and frequent releases. Can be used as either local tool or as part of CI/CD.  
+
+> This project is build in public, therefore I strive to stream its development on [Twitch](https://www.twitch.tv/creatixd)
+
+<br>
+
+---
+
+<p align = "center">
+  <b> <i> Show your support by giving a :star: </b> </i>
+</p>
+
+---
+
+<br>
+
 
 ## Table of Contents
 1. [Overview](#overview)
 2. [Key Features](#key-features)
-3. [Roadmap](#roadmap)
-4. [Getting Started](#getting-started)
+3. [Getting Started](#getting-started)
    - [CI/CD](#cicd)
    - [CLI](#cli)
    - [Configuration File](#configuration-file)
-6. [Contributing](#contributing)
-7. [License](#license)
+4. [Contributing](#contributing)
+5. [License](#license)
 
 ## Overview
 
-Impactifier provides an automated approach to change impact analysis, initally designed to serve as CI/CD tool. 
-Aims to improve frequency and reliability of releases, by generating impact reports for engineers to be able to push the changes with confidence.
-(Eventually) Highly configurable, with possibility to add custom rules. Your contracts generator does weird stuff under the hood, yet you want to 
-see what impact on front-end modifying its query handler have? Don't worry, *Impactifier* got your back.
+> *Please note, that a lot of this README was created with help of ChatGPT, so it is far from perfect*
+
+Impactifier provides an automated approach to change impact analysis, designed to serve as both CI/CD and local tool. 
+Aims to improve frequency and reliability of releases, by generating impact reports for engineers to be able to push the changes with confidence. (Eventually) Highly configurable, with possibility to add custom rules and actions.
+
+Your contracts generator does weird stuff under the hood, yet you want to see what impact on front-end modifying its query handler have? Don't worry, **Impactifier got your back.**
 
 ## Key Features
 
@@ -28,15 +43,9 @@ see what impact on front-end modifying its query handler have? Don't worry, *Imp
 - **Integration with CI/CD Pipelines:** Seamlessly integrate with GitHub Actions to provide impact reports in pull requests.
 - **Performance:** Built in Rust for high performance and low latency. After all, it is all about faster releases.
 
-## Roadmap
-
-We want to support specifying more detailed context of analysis, such as:
-- specific file and directory/file:
-    `$ impactifier . features/auth --to-branch develop` - Analyse current file and its impact regarding 
-    current state of `--to-branch`'s `./features/auth` directory
-
-
 ## Getting Started
+
+> Please note, that it doesn't yet work at all. Stuff below is meant to show how it *hopefully* will be used.
 
 ### CI/CD
 
@@ -66,7 +75,7 @@ jobs:
 ```
 
 Flags information can easily be extracted inside the github action itself. 
-Full example can be found [here](github.com/wzslr321/impactifier/example/.github/impactifier-action.yaml)
+Full example can be found [here](github.com/wzslr321/impactifier/.github/impactifier.yaml)
 
 
 ### CLI 
@@ -103,48 +112,44 @@ Below is an example of a impactifier-config.yaml file:
 
 ```yaml
 repository:
-  url: "https://github.com/example/repository.git"
-  path: "/path/to/local/repository"
-  access_token: "${GITHUB_ACCESS_TOKEN}"
-
+  url: "https://github.com/wzslr321/impactifier"
 options:
-  on:
-    - push
-    - pull_request
-  clone_into: "/tmp/clone"
+  clone_into: "./repo"
+
+rules:
+  - name: "Detect API Changes"
+    trigger:
+      path: "api/"
+      pattern: "func (\\w+)Handler"
+    transform:
+      name: "toApiEndpoint"
+      steps:
+        - name: "toLowerCase"
+        - name: "replace"
+          args:
+            pattern: "Handler$"
+            with: "_endpoint"
+        - name: "prepend"
+          args:
+            value: "/api/"
+        - name: "customFunction"
+          args:
+            script: |
+              fn transform(context) {
+                  if context.class_name == "SpecialClass" {
+                      return "/special" + context.matched_string;
+                  } else {
+                      return context.matched_string;
+                  }
+              }
+    matcher:
+      path: "client/"
+      pattern: "ApiClient.call('$transform')"
+    action:
+      alert_level: "Severe"
+      message: "API changed"
+
 ```
-
-#### Configuration Options
-**repository:** Contains details about the repository to be analyzed.
-- `url`: The URL of the repository to clone. This can be omitted if you provide a path.
-- `path`: The path to a local repository. This can be used instead of cloning from a URL.
-- `access_token`: An optional access token used for cloning private repositories. This can be set via an environment variable (e.g., `${GITHUB_ACCESS_TOKEN}`).
-
-**options:** General options for Impactifier.
-- `on`: A list of actions (push, pull_request) that trigger the analysis.
-- `clone_into`: Specifies the directory where the repository should be cloned.
-
-#### Overriding Configuration with CLI Flags 
-While the configuration file provides a convenient way to manage settings, you can override any of these options directly from the command line using CLI flags. This allows for flexibility, especially when running Impactifier in different environments (e.g., local vs. CI/CD).
-
-For example:
-```sh
-$ impactifier --config my-config.yaml --from-branch develop --to-branch main
-```
-
-In the above command:
-
-- `--config my-config.yaml`: Specifies a custom configuration file.
-- `--from-branch develop` and `--to-branch main`: Override the branches defined in the configuration file.
-
-**Priority Order**
-Impactifier follows a specific priority order when determining which settings to use:
-
-- CLI Arguments/Flags: Highest priority. Values provided here override both default settings and those in the configuration file.
-- Configuration File: If no CLI argument is provided for a setting, Impactifier looks for it in the configuration file.
-- Default Configuration File: If you don’t specify a configuration file with the --config flag, Impactifier looks for a file 
-named impactifier-config.yaml in the current working directory. If no file is found, it uses the default settings.
-- Defaults: If neither a CLI argument nor a configuration file value is provided, Impactifier falls back to its default settings.
 
 ## Contributing
 We welcome contributions to Impactifier! Please refer to our [Contributing Guidelines](CONTRIBUTING.md) for instructions on how to contribute.
