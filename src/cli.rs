@@ -1,4 +1,3 @@
-use core::fmt;
 use std::path::Path;
 
 use clap::Parser;
@@ -80,7 +79,7 @@ pub fn run() -> Result<(), CliError> {
         }
         Err(err) => {
             error!("args are invalid. Exiting...");
-            return Err(err)
+            return Err(err);
         }
     }
 
@@ -94,6 +93,7 @@ pub fn run() -> Result<(), CliError> {
     let _repository = match &cfg.repository.url {
         Some(url) => match try_retrieve_repo_from_url(
             cfg.repository.access_token,
+            "wzslr321",
             url,
             cfg.options.clone_into,
         ) {
@@ -119,7 +119,7 @@ pub fn run() -> Result<(), CliError> {
             }
             None => {
                 error!("Repository url and path are unspecified");
-                return Err(CliError::InvalidConfigPath);
+                return Err(CliError::InvalidConfigPath { err: None });
             }
         },
     };
@@ -160,6 +160,7 @@ fn try_retrieve_repo_from_path(path: &str) -> Result<Repository, Box<dyn std::er
 
 fn try_retrieve_repo_from_url(
     access_token: Option<String>,
+    username: &str,
     url: &Url,
     clone_into: Option<Box<Path>>,
 ) -> Result<Repository, Box<dyn std::error::Error>> {
@@ -172,7 +173,7 @@ fn try_retrieve_repo_from_url(
     match utils::prepare_directory(&clone_into_path) {
         Ok(_) => {
             trace!("Starting to clone repository");
-            let cloned_repo = match clone_repo(access_token, url, &clone_into_path) {
+            let cloned_repo = match clone_repo(access_token, username, url, &clone_into_path) {
                 Ok(repo) => repo,
                 Err(e) => {
                     error!("Failed to clone repository. error: {}", e);
@@ -212,16 +213,16 @@ fn setup_logging(tracing_level: u8) {
         .init();
 }
 
-fn load_config(path: &Path) -> Result<Config, CliError> {
+fn load_config(path: &Path) -> anyhow::Result<Config, CliError> {
     trace!("Starting loading config from {:?}", path);
     match Config::load_from_file(path) {
         Ok(config) => {
             info!("Config loaded successfully");
             Ok(config)
         }
-        Err(_) => {
+        Err(err) => {
             error!("Failed to read configuration from {:?}", path);
-            return Err(CliError::InvalidConfigPath);
+            return Err(CliError::InvalidConfigPath { err: Some(err) });
         }
     }
 }
@@ -233,7 +234,7 @@ pub enum CliError {
     #[error("Incorrect CLI arguments.{}", msg)]
     IncorrectArgs { msg: String },
     #[error("Config can not be retrieved")]
-    InvalidConfigPath,
+    InvalidConfigPath { err: Option<anyhow::Error> },
     #[error("Unknown error")]
     Unknown,
 }

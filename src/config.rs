@@ -1,11 +1,19 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Deserializer};
+use tracing::error;
 use std::cmp;
-use std::env;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
+use thiserror::Error;
 use tracing::debug;
 use url::Url;
+
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("Failed to read config from path: {}. Error:{}", path, msg)]
+    ReadFailure { path: String, msg: String },
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -88,18 +96,21 @@ pub struct CustomStep {
 
 impl Config {
     // TODO(wiktor.zajac) improve error handling
-    pub fn load_from_file(file_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load_from_file(file_path: &Path) -> Result<Self> {
         let yaml_content = match std::fs::read_to_string(file_path) {
             Ok(content) => {
                 debug!("Succesfully read yaml config file:\n{}", content);
                 content
             }
             Err(e) => {
-                return Err(e.into());
+                error!("Failed to read yaml config");
+                return Err(ConfigError::ReadFailure {
+                    path: String::from(file_path.to_string_lossy()),
+                    msg: e.to_string(),
+                }
+                .into())
             }
         };
-        let yaml_content = replace_env_vars(&yaml_content);
-        debug!("replaced env variables in yaml config");
 
         let cfg = serde_yaml::from_str(&yaml_content)?;
         debug!("Deserialized config:\n{}", cfg);
@@ -124,7 +135,7 @@ impl Config {
                         .and_then(|args| args.get("script"))
                         .and_then(|script_value| script_value.as_str())
                         .map(|s| s.to_string())
-                        .unwrap()
+                        .unwrap(),
                 })
             })
             .collect();
@@ -170,18 +181,6 @@ impl fmt::Display for Config {
             self.repository, self.options, self.rules,
         )
     }
-}
-
-// TODO: Probably could be globally handled with regex,
-// but it first needs to be ensured that the performance
-// will not be affected. If somehow the regex will affect
-// performance strong enough, replacable variables should
-// be predefined instead of being hardcoded here.
-fn replace_env_vars(yaml_content: &str) -> String {
-    yaml_content.replace(
-        "${GITHUB_ACCESS_TOKEN}",
-        &env::var("GITHUB_ACCESS_TOKEN").unwrap_or_default(),
-    )
 }
 
 fn deserialize_url<'a, D>(deserializer: D) -> Result<Option<Url>, D::Error>
