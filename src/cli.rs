@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::transform::init_registry;
 use crate::utils;
-use crate::{config::Config, git::clone_repo};
+use crate::{config::Config, git::clone_repo, git::open_repo};
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -90,11 +90,11 @@ pub fn run() -> Result<(), CliError> {
 
     init_registry(cfg.custom_transform_scripts());
 
-    let _repository = match &cfg.repository.url {
+    let _repository = match cfg.repository.url {
         Some(url) => match try_retrieve_repo_from_url(
             cfg.repository.access_token,
             "wzslr321",
-            url,
+            &url,
             cfg.options.clone_into,
         ) {
             Ok(repo) => repo,
@@ -102,21 +102,16 @@ pub fn run() -> Result<(), CliError> {
                 return Err(CliError::Unknown);
             }
         },
-        None => match &cfg.repository.path {
-            Some(path) => {
-                match try_retrieve_repo_from_path(
-                    (*path)
-                        .to_str()
-                        .expect("Path is expected to be validated during serialization"),
-                ) {
-                    Ok(repo) => repo,
-                    Err(_) => {
-                        return Err(CliError::IncorrectArgs {
-                            msg: "Either repository url or path must be specified".to_string(),
-                        });
-                    }
+        None => match cfg.repository.path {
+            Some(path) => match try_retrieve_repo_from_path(path) {
+                Ok(repo) => repo,
+                Err(err) => {
+                    return Err(CliError::IncorrectArgs {
+                        msg: "Either repository url or path must be specified".to_string(),
+                        err: Some(err.into()),
+                    });
                 }
-            }
+            },
             None => {
                 error!("Repository url and path are unspecified");
                 return Err(CliError::InvalidConfigPath { err: None });
@@ -130,11 +125,11 @@ pub fn run() -> Result<(), CliError> {
 fn check_args_validity(args: Args) -> Result<(), CliError> {
     match (&args.from_branch, &args.to_branch) {
         (None, None) => {
-            info!("No branches specified");
+            trace!("No branches specified");
             match &args.of_commit {
                 Some(_) => Ok(()),
                 None => {
-                    error!("No commit specified. Nothing to analyze");
+                    error!("Neither commit nor branch specified. Nothing to analyze");
                     Err(CliError::InsufficientArgs)
                 }
             }
@@ -144,18 +139,27 @@ fn check_args_validity(args: Args) -> Result<(), CliError> {
             error!("from_branch specified, but to_branch is missing");
             Err(CliError::IncorrectArgs {
                 msg: "Specifying `from_branch` requires `to_branch` to be specified".to_string(),
+                err: None,
             })
         }
         (Some(_), Some(_)) => Ok(()),
     }
 }
 
-fn try_retrieve_repo_from_path(path: &str) -> Result<Repository, Box<dyn std::error::Error>> {
-    trace!(
-        "attempt to retireve repo path specified repository.\nPath:{}",
-        path
-    );
-    todo!();
+fn try_retrieve_repo_from_path(path: Box<Path>) -> Result<Repository, CliError> {
+    match open_repo(&path) {
+        Ok(repository) => {
+            info!("sucessfully retrieved repository from path");
+            Ok(repository)
+        } 
+        Err(err) =>  {
+            error!("failed to retrieve repository from path: {}", String::from((*path).to_string_lossy()));
+            Err(CliError::IncorrectArgs{
+                msg: "Failed to retireve repository from path".to_string(),
+                err: Some(err.into()),
+            })
+        }
+    }
 }
 
 fn try_retrieve_repo_from_url(
@@ -188,14 +192,6 @@ fn try_retrieve_repo_from_url(
             return Err(e.into());
         }
     }
-}
-
-fn try_analyze_commit(_commit_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-    todo!()
-}
-
-fn try_analyze_local_changes() -> Result<(), Box<dyn std::error::Error>> {
-    todo!()
 }
 
 fn setup_logging(tracing_level: u8) {
@@ -231,8 +227,8 @@ fn load_config(path: &Path) -> anyhow::Result<Config, CliError> {
 pub enum CliError {
     #[error("No branches and no commit specified. No local changes detected. Nothing to analyze.")]
     InsufficientArgs,
-    #[error("Incorrect CLI arguments.{}", msg)]
-    IncorrectArgs { msg: String },
+    #[error("Incorrect CLI arguments.{}\nError:{:?}", msg, err)]
+    IncorrectArgs { msg: String, err: Option<anyhow::Error>},
     #[error("Config can not be retrieved")]
     InvalidConfigPath { err: Option<anyhow::Error> },
     #[error("Unknown error")]

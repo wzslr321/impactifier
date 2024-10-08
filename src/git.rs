@@ -20,6 +20,26 @@ pub enum GitError {
         path: String,
         err: git2::Error,
     },
+    #[error("Failed to open repository from path: {}. Error: {}", path, err)]
+    OpenRepositoryFailure { path: String, err: git2::Error },
+}
+
+pub fn open_repo(path: &Path) -> Result<Repository, GitError> {
+    info!("start opening repository");
+
+    match Repository::open(path) {
+        Ok(repository) => {
+            trace!("repository opened successfuly");
+            Ok(repository)
+        }
+        Err(err) => {
+            error!("failed to open repository");
+            Err(GitError::OpenRepositoryFailure {
+                path: String::from(path.to_string_lossy()),
+                err,
+            })
+        }
+    }
 }
 
 pub fn clone_repo(
