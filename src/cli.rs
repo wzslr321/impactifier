@@ -69,16 +69,11 @@ struct Args {
     tracing_level: u8,
 }
 
+// TODO add more credentials variants
 pub enum Credentials<'a> {
     UsernamePassword {
         username: &'a str,
         password: &'a str,
-    },
-    SshKey {
-        username: String,
-        public_key_path: String,
-        private_key_path: String,
-        passphrase: Option<String>,
     },
 }
 
@@ -132,7 +127,22 @@ pub fn run() -> Result<(), CliError> {
         },
     };
 
-    let _ = extract_difference(&repository);
+    let credentials = Credentials::UsernamePassword {
+        username: "wzslr321",
+        password: "TEST",
+    };
+
+    crate::git::fetch_remote(&repository, "origin", &credentials).unwrap();
+
+    let diff = extract_difference(
+        &repository,
+        &crate::git::DiffOptions::Branches {
+            from: &args.from_branch.unwrap(),
+            to: &args.to_branch.unwrap_or_else(|| "main".to_string()),
+        },
+    );
+
+    println!("{:?}", diff);
 
     Ok(())
 }
@@ -199,7 +209,7 @@ fn try_retrieve_repo_from_url(
 
             let credentials = Credentials::UsernamePassword {
                 username,
-                password: &access_token.unwrap_or_else(|| "OnlyForTesting".to_string()), // expect("access_token must be specified, as it is the only supported authentication method for now"),
+                password: &access_token.unwrap_or_else(|| "OnlyForTesting".to_string()), // ehttps://www.twitch.tv/directory/followingxpect("access_token must be specified, as it is the only supported authentication method for now"),
             };
             let cloned_repo = match clone_repo(&credentials, url, &clone_into_path) {
                 Ok(repo) => repo,

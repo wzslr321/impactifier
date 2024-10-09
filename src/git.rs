@@ -2,6 +2,7 @@ use std::path::Path;
 use thiserror::Error;
 
 use git2::{Cred, RemoteCallbacks, Repository};
+use std::str;
 use tracing::{error, info, trace};
 use url::Url;
 
@@ -28,10 +29,81 @@ pub enum GitError {
     // Unknown { err: Box<dyn std::error::Error> },
 }
 
-pub struct FileDiff {}
+#[derive(Debug)]
+pub struct Diff {
+    pub deltas: Vec<FileDelta>,
+}
 
-pub fn extract_difference(_repo: &Repository) -> Result<Vec<FileDiff>, GitError> {
-    todo!()
+#[derive(Debug)]
+pub struct FileDelta {
+    pub value: String,
+}
+
+impl FileDelta {
+    fn from(value: String) -> Self {
+        Self { value }
+    }
+}
+
+pub enum DiffOptions<'a> {
+    Branches { from: &'a str, to: &'a str },
+}
+
+pub fn extract_difference(repo: &Repository, options: &DiffOptions) -> anyhow::Result<Diff> {
+    match options {
+        DiffOptions::Branches { from, to } => extract_difference_branches(repo, from, to),
+    }
+}
+
+pub fn fetch_remote(repo: &Repository, remote_name: &str, credentials: &Credentials) -> anyhow::Result<()> {
+    // Find the remote
+    let mut remote = repo.find_remote(remote_name)?;
+
+    // Set up callbacks for authentication (if needed)
+    let mut cb = RemoteCallbacks::new();
+    cb.credentials(|_url, _username_from_url, _allowed_types| credentials.into());
+
+    // Configure fetch options with the callbacks
+    let mut fetch_options = git2::FetchOptions::new();
+    fetch_options.remote_callbacks(cb);
+
+    // Define the refspecs to fetch. Here, we fetch all branches.
+    let refspecs = ["+refs/heads/*:refs/remotes/origin/*"];
+
+    // Perform the fetch
+    remote.fetch(&refspecs, Some(&mut fetch_options), None)?;
+
+    Ok(())
+}
+
+pub fn extract_difference_branches(
+    repo: &Repository,
+    from_branch: &str,
+    to_branch: &str,
+) -> anyhow::Result<Diff> {
+    let ref_from = repo.find_reference(&format!("refs/heads/{}", from_branch))?;
+    let ref_to = repo.find_reference(&format!("refs/remotes/origin/{}", to_branch))?;
+
+    let commit_a = ref_from.peel_to_commit()?;
+    let commit_b = ref_to.peel_to_commit()?;
+
+    let tree_a = commit_a.tree()?;
+    let tree_b = commit_b.tree()?;
+
+    let diff = repo.diff_tree_to_tree(Some(&tree_a), Some(&tree_b), None)?;
+    let mut diff_output = Vec::new();
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        diff_output.extend_from_slice(line.content());
+        true
+    })?;
+
+    let diff_str = str::from_utf8(&diff_output)
+        .map_err(|e| git2::Error::from_str(&format!("UTF-8 conversion error: {}", e)))?
+        .to_string();
+
+    Ok(Diff {
+        deltas: vec![FileDelta::from(diff_str)],
+    })
 }
 
 pub fn open_repo(path: &Path) -> Result<Repository, GitError> {
@@ -58,17 +130,6 @@ impl Credentials<'_> {
             Credentials::UsernamePassword { username, password } => {
                 Cred::userpass_plaintext(&username, &password)
             }
-            Credentials::SshKey {
-                username,
-                public_key_path,
-                private_key_path,
-                passphrase,
-            } => Cred::ssh_key(
-                &username,
-                Some(Path::new(public_key_path)),
-                Path::new(private_key_path),
-                passphrase.as_deref(),
-            ),
         };
 
         match credentials {
@@ -114,7 +175,7 @@ pub fn clone_repo(
             let err = match e.code() {
                 git2::ErrorCode::Auth => GitError::NoAccess { err: e },
                 _ => GitError::CloneFailure {
-                    url: url.to_string(), 
+                    url: url.to_string(),
                     path: String::from(clone_into.to_string_lossy()),
                     err: e,
                 },
