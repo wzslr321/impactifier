@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Write;
 use std::path::Path;
 
 use clap::Parser;
@@ -6,6 +8,7 @@ use thiserror::Error;
 use tracing::{error, info, trace, Level};
 use url::Url;
 use uuid::Uuid;
+use serde_json::to_string_pretty;
 
 use crate::transform::init_registry;
 use crate::utils;
@@ -67,6 +70,9 @@ struct Args {
     /// 4 = Error
     #[arg(long, default_value_t = 2)]
     tracing_level: u8,
+
+    #[arg(long, default_value_t=String::from("origin"))]
+    origin: String,
 }
 
 // TODO add more credentials variants
@@ -127,12 +133,12 @@ pub fn run() -> Result<(), CliError> {
         },
     };
 
-    let credentials = Credentials::UsernamePassword {
+    let mock_credentials = Credentials::UsernamePassword {
         username: "wzslr321",
         password: "TEST",
     };
 
-    crate::git::fetch_remote(&repository, "origin", &credentials).unwrap();
+    crate::git::fetch_remote(&repository, &args.origin, &mock_credentials).unwrap();
 
     let diff = extract_difference(
         &repository,
@@ -140,9 +146,12 @@ pub fn run() -> Result<(), CliError> {
             from: &args.from_branch.unwrap(),
             to: &args.to_branch.unwrap_or_else(|| "main".to_string()),
         },
-    );
+    )
+    .unwrap();
+    let serialized_diff = to_string_pretty(&diff).unwrap();
 
-    println!("{:?}", diff);
+    let mut file = File::create("./diff.json").unwrap();
+    file.write_all(serialized_diff.as_bytes()).unwrap();
 
     Ok(())
 }

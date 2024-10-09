@@ -1,4 +1,5 @@
 use std::path::Path;
+use serde::Serialize;
 use thiserror::Error;
 
 use git2::{Cred, RemoteCallbacks, Repository};
@@ -29,12 +30,12 @@ pub enum GitError {
     // Unknown { err: Box<dyn std::error::Error> },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Diff {
     pub deltas: Vec<FileDelta>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct FileDelta {
     pub value: String,
 }

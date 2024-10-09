@@ -11,17 +11,18 @@ permissions:
   issues: write
   pull-requests: write
 
-
 jobs:
   impactifier:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout the repository with full history
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 
+          fetch-depth: 0  # Fetch all history for all branches
 
+      # 2. Cache Cargo Registry
       - name: Cache Cargo Registry
         uses: actions/cache@v3
         with:
@@ -30,6 +31,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
+      # 3. Cache Cargo Build
       - name: Cache Cargo Build
         uses: actions/cache@v3
         with:
@@ -38,24 +40,98 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-build-
 
+      # 4. Build Impactifier
       - name: Build Impactifier
         run: |
           cargo build --release --manifest-path Cargo.toml
 
+      # 5. Run Impactifier and generate diff.json
       - name: Run Impactifier
+        id: run_impactifier
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./target/release/impactifier --config impactifier-config.yaml
+          ./target/release/impactifier --tracing-level=0 --from-branch=main --to-branch=refactor 
 
+      # 6. (Optional) Output diff.json for debugging
+      - name: Output diff.json (Debug)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          cat diff.json
+
+      # 7. Post Comment on Pull Request with the diff
       - name: Post Comment on Pull Request
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v6
         with:
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## Impactifier Report`
-            });
+            const fs = require('fs');
+            const path = 'diff.json'; // Path to the diff JSON file
+
+            // Check if the diff file exists
+            if (!fs.existsSync(path)) {
+              console.log('No diff.json file found.');
+              return;
+            }
+
+            // Read and parse the diff JSON
+            let diffData;
+            try {
+              const rawData = fs.readFileSync(path, 'utf8');
+              diffData = JSON.parse(rawData);
+            } catch (error) {
+              console.error('Failed to read or parse diff.json:', error);
+              return;
+            }
+
+            // Format the diff for the comment
+            let formattedDiff = '';
+            if (diffData.deltas && Array.isArray(diffData.deltas)) {
+              diffData.deltas.forEach(delta => {
+                if (delta.value) {
+                  // Escape backticks in the delta.value to prevent breaking the Markdown
+                  const safeValue = delta.value.replace(/`/g, '\\`');
+                  formattedDiff += `${safeValue}\n`;
+                }
+              });
+            } else {
+              formattedDiff = 'No differences found.';
+            }
+
+            // Handle large diffs by truncating (optional)
+            const maxLength = 60000; // GitHub comment limit
+            let truncatedDiff = formattedDiff;
+            if (formattedDiff.length > maxLength) {
+              truncatedDiff = formattedDiff.substring(0, maxLength) + '\n... (diff truncated)';
+            }
+
+            // Create a summary based on the number of deltas
+            let summary = '';
+            if (diffData.deltas && diffData.deltas.length > 0) {
+              summary = `**Total Changes:** ${diffData.deltas.length} file(s) changed.\n\n`;
+            } else {
+              summary = 'No changes detected between the specified branches.\n\n';
+            }
+
+            // Create the comment body with summary and diff
+            const commentBody = `## Impactifier Report
+
+            ${summary}
+
+            \`\`\`diff
+            ${truncatedDiff}
+            \`\`\``;
+
+            // Post the comment to the pull request
+            try {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody
+              });
+              console.log('Impactifier report posted successfully.');
+            } catch (error) {
+              console.error('Failed to post Impactifier report:', error);
+            }
+
