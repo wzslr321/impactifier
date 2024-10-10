@@ -12,7 +12,9 @@ use serde_json::to_string_pretty;
 
 use crate::transform::init_registry;
 use crate::utils;
-use crate::{config::Config, git::clone_repo, git::extract_difference, git::open_repo};
+use crate::git;
+use crate::config;
+use anyhow::Result;
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -75,7 +77,7 @@ struct Args {
     origin: String,
 }
 
-// TODO add more credentials variants
+// TODO: add more credentials variants
 pub enum Credentials<'a> {
     UsernamePassword {
         username: &'a str,
@@ -133,14 +135,10 @@ pub fn run() -> Result<(), CliError> {
         },
     };
 
-    let mock_credentials = Credentials::UsernamePassword {
-        username: "wzslr321",
-        password: "TEST",
-    };
+    let credentials = utils::get_mock_credentials();
+    git::fetch_remote(&repository, &args.origin, &credentials).unwrap();
 
-    crate::git::fetch_remote(&repository, &args.origin, &mock_credentials).unwrap();
-
-    let diff = extract_difference(
+    let diff = git::extract_difference(
         &repository,
         &crate::git::DiffOptions::Branches {
             from: &args.from_branch.unwrap(),
@@ -181,7 +179,7 @@ fn check_args_validity(args: Args) -> Result<(), CliError> {
 }
 
 fn try_retrieve_repo_from_path(path: Box<Path>) -> Result<Repository, CliError> {
-    match open_repo(&path) {
+    match git::open_repo(&path) {
         Ok(repository) => {
             info!("sucessfully retrieved repository from path");
             Ok(repository)
@@ -220,7 +218,7 @@ fn try_retrieve_repo_from_url(
                 username,
                 password: &access_token.unwrap_or_else(|| "OnlyForTesting".to_string()), // ehttps://www.twitch.tv/directory/followingxpect("access_token must be specified, as it is the only supported authentication method for now"),
             };
-            let cloned_repo = match clone_repo(&credentials, url, &clone_into_path) {
+            let cloned_repo = match git::clone_repo(&credentials, url, &clone_into_path) {
                 Ok(repo) => repo,
                 Err(e) => {
                     error!("Failed to retreive repository from url.\nError: {}", e);
@@ -261,9 +259,9 @@ fn setup_logging(tracing_level: u8) {
         .init();
 }
 
-fn load_config(path: &Path) -> anyhow::Result<Config, CliError> {
+fn load_config(path: &Path) -> anyhow::Result<config::Config, CliError> {
     trace!("Starting loading config from {:?}", path);
-    match Config::load_from_file(path) {
+    match config::Config::load_from_file(path) {
         Ok(config) => {
             info!("Config loaded successfully");
             Ok(config)

@@ -1,6 +1,7 @@
 use std::path::Path;
 use serde::Serialize;
 use thiserror::Error;
+use anyhow::Result;
 
 use git2::{Cred, RemoteCallbacks, Repository};
 use std::str;

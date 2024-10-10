@@ -1,10 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Deserializer};
 use tracing::error;
 use std::cmp;
 use std::fmt;
 use std::path::Path;
-use std::path::PathBuf;
 use thiserror::Error;
 use tracing::debug;
 use url::Url;
@@ -35,16 +34,16 @@ pub struct OptionsConfig {
     pub clone_into: Option<Box<Path>>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Trigger {
-    pub path: Box<Path>,
-
-    #[serde(default)]
-    pub pattern: Option<String>,
-
-    #[serde(default)]
-    pub analyze_dependencies: bool,
-}
+// #[derive(Debug, Deserialize)]
+// pub struct Trigger {
+//     pub path: Box<Path>,
+//
+//     #[serde(default)]
+//     pub pattern: Option<String>,
+//
+//     #[serde(default)]
+//     pub analyze_dependencies: bool,
+// }
 
 #[derive(Debug, Deserialize)]
 pub struct TransformStep {
@@ -55,17 +54,17 @@ pub struct TransformStep {
 
 #[derive(Debug, Deserialize)]
 pub struct Transform {
-    pub name: String,
+    // pub name: String,
 
     #[serde(default)]
     pub steps: Vec<TransformStep>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Matcher {
-    pub path: PathBuf,
-    pub pattern: String,
-}
+// #[derive(Debug, Deserialize)]
+// pub struct Matcher {
+//     pub path: PathBuf,
+//     pub pattern: String,
+// }
 
 #[derive(Debug, Deserialize)]
 pub enum AlertLevel {
@@ -76,17 +75,17 @@ pub enum AlertLevel {
 
 #[derive(Debug, Deserialize)]
 pub struct Action {
-    pub alert_level: AlertLevel,
-    pub message: String,
+    // pub alert_level: AlertLevel,
+    // pub message: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Rule {
-    pub name: String,
-    pub trigger: Trigger,
+    // pub name: String,
+    // pub trigger: Trigger,
     pub transform: Transform,
-    pub matcher: Matcher,
-    pub action: Action,
+    // pub matcher: Matcher,
+    // pub action: Action,
 }
 
 pub struct CustomStep {
