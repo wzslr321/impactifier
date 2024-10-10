@@ -4,8 +4,9 @@ mod git;
 mod utils;
 mod transform;
 
-use std::error::Error;
+use cli::CliError;
+use anyhow::Result;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    cli::run()
+fn main() -> Result<(), CliError> {
+    cli::run() 
 }

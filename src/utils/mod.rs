@@ -1,7 +1,10 @@
 use std::{fs, path::Path};
 use tracing::{info, trace};
+use anyhow::Result;
 
-pub fn prepare_directory(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+use crate::cli::Credentials;
+
+pub fn prepare_directory(path: &Path) -> Result<()> {
     if path.exists() {
         if path.read_dir()?.next().is_some() {
             info!("Directory is not empty, removing existing files...");
@@ -14,4 +17,11 @@ pub fn prepare_directory(path: &Path) -> Result<(), Box<dyn std::error::Error>> 
     }
     trace!("Successfully prepared directory for cloning");
     Ok(())
+}
+
+pub fn get_mock_credentials<'a>() -> &'a Credentials<'a> {
+    &Credentials::UsernamePassword {
+        username: "wzslr321",
+        password: "TEST",
+    }
 }
