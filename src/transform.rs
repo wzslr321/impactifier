@@ -1,10 +1,11 @@
 use crate::config::CustomStep;
+use anyhow::anyhow;
 use anyhow::Result;
 use rhai::{Dynamic, Engine, Map, Scope};
-use tracing::trace;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use tracing::trace;
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -35,13 +36,15 @@ fn register_transform(name: &str, func: Box<dyn TransformFn + Send + Sync>) {
 }
 
 pub fn init_registry(custom_steps: Option<Vec<CustomStep>>) {
-    trace!("init_registry started");
+    trace!("Starting to register transform scripts functions");
+
     register_transform("toUpperCase", Box::new(ToLowerCase));
     register_transform("replace", Box::new(Replace));
-    trace!("standard functions registered");
+    trace!("Standard functions registered");
+
     if let Some(steps) = custom_steps {
         for step in steps {
-            trace!("initializing custom function {}", &step.name);
+            trace!("Initializing custom function {}", &step.name);
             register_transform(
                 &step.name,
                 Box::new(CustomFunction {
@@ -50,7 +53,6 @@ pub fn init_registry(custom_steps: Option<Vec<CustomStep>>) {
             );
         }
     }
-    trace!("init_registry finished");
 }
 
 pub struct ToLowerCase;

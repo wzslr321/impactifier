@@ -1,19 +1,19 @@
+use anyhow::{anyhow, Context};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
 use clap::Parser;
 use git2::Repository;
+use serde_json::to_string_pretty;
 use thiserror::Error;
 use tracing::{error, info, trace, Level};
 use url::Url;
-use uuid::Uuid;
-use serde_json::to_string_pretty;
 
+use crate::config::Config;
+use crate::git;
 use crate::transform::init_registry;
 use crate::utils;
-use crate::git;
-use crate::config;
 use anyhow::Result;
 
 #[derive(Parser, Debug, Clone)]
@@ -45,14 +45,14 @@ struct Args {
     config: String,
 
     /// From what branch changes should be compared.
-    ///
-    /// Defaults to the current branch.
-    #[arg(short, long)]
+    #[arg(long)]
     from_branch: Option<String>,
 
-    /// To what branch changes should be compared
-    #[arg(long)]
-    to_branch: Option<String>,
+    /// To what branch changes should be compared.
+    ///
+    /// Defaults to "main"
+    #[arg(long, default_value_t=String::from("main"))]
+    to_branch: String,
 
     /// Commit of which changes should be analyzed. Takes precedence over
     /// branch changes, if `from_branch` or `to_branch` is specified.
@@ -89,63 +89,71 @@ pub fn run() -> Result<(), CliError> {
     let args = Args::parse();
     setup_logging(args.tracing_level);
 
-    match check_args_validity(args.clone()) {
-        Ok(_) => {
-            trace!("args validation completed successfully. Continuing execution.");
-        }
-        Err(err) => {
-            error!("args are invalid. Exiting...");
-            return Err(err);
-        }
-    }
-
     let cfg = match load_config(Path::new(&args.config)) {
         Ok(config) => config,
-        Err(e) => return Err(e),
+        Err(e) => {
+            error!("initial config load failed. Exciting...");
+            return Err(e);
+        }
     };
+    trace!("Initial config load succeeded");
 
     init_registry(cfg.custom_transform_scripts());
+    trace!("Transform functions initialized successfully");
 
-    let repository = match cfg.repository.url {
-        Some(url) => match try_retrieve_repo_from_url(
-            cfg.repository.access_token,
-            "wzslr321",
-            &url,
-            cfg.options.clone_into,
-        ) {
-            Ok(repo) => repo,
-            Err(e) => {
-                return Err(e);
-            }
-        },
-        None => match cfg.repository.path {
-            Some(path) => match try_retrieve_repo_from_path(path) {
-                Ok(repo) => repo,
-                Err(err) => {
-                    return Err(CliError::IncorrectArgs {
-                        msg: "Either repository url or path must be specified".to_string(),
-                        err: Some(err.into()),
-                    });
-                }
-            },
+    // TODO: Retrieve properly from args
+    let mock_credentials = utils::get_mock_credentials();
+
+    let clone_into = match cfg.options.clone_into.as_deref() {
+        Some(path) => path,
+        None => Path::new("cloned_repository"),
+    };
+
+    let repository_retrieval_result = match cfg.repository.url {
+        Some(url) => try_retrieve_repo_from_url(mock_credentials, &url, clone_into),
+        None => match &cfg.repository.path {
+            Some(path) => try_retrieve_repo_from_path(path),
             None => {
-                error!("Repository url and path are unspecified");
-                return Err(CliError::InvalidConfigPath { err: None });
+                return Err(CliError::InvalidArgs {
+                    err: Some(anyhow!("Either path or url must be specified")),
+                });
             }
         },
     };
 
-    let credentials = utils::get_mock_credentials();
-    git::fetch_remote(&repository, &args.origin, &credentials).unwrap();
+    let repository = match repository_retrieval_result {
+        Ok(repository) => repository,
+        Err(err) => return Err(CliError::Unknown { err: Some(err) }),
+    };
+    trace!("Successfully retrieved repository");
 
-    let diff = git::extract_difference(
+    if let Err(fetch_err) = git::fetch_remote(&repository, &args.origin, &mock_credentials) {
+        error!("Failed to fetch remote");
+        return Err(CliError::Unknown {
+            err: Some(fetch_err),
+        });
+    }
+    trace!("Successfully fetched remote");
+
+    // TODO: Support other DiffOptions
+    //
+    // Current one is temporary, just for testing purposes
+    let diff = match git::extract_difference(
         &repository,
-        &crate::git::DiffOptions::Branches {
+        &git::DiffOptions::Branches {
             from: &args.from_branch.unwrap(),
-            to: &args.to_branch.unwrap_or_else(|| "main".to_string()),
+            to: &args.to_branch,
         },
-    )
-    .unwrap();
+    ) {
+        Ok(diff) => diff,
+        Err(err) => {
+            error!("Failed to extract difference");
+            return Err(CliError::Unknown { err: Some(err) });
+        }
+    };
+    trace!("Successfuly extracted difference");
+
+    // Temporary, for testing purposes
     let serialized_diff = to_string_pretty(&diff).unwrap();
 
     let mut file = File::create("./diff.json").unwrap();
@@ -154,94 +162,43 @@ pub fn run() -> Result<(), CliError> {
     Ok(())
 }
 
-fn check_args_validity(args: Args) -> Result<(), CliError> {
-    match (&args.from_branch, &args.to_branch) {
-        (None, None) => {
-            trace!("No branches specified");
-            match &args.of_commit {
-                Some(_) => Ok(()),
-                None => {
-                    error!("Neither commit nor branch specified. Nothing to analyze");
-                    Err(CliError::InsufficientArgs)
-                }
-            }
-        }
-        (None, Some(_)) => Ok(()),
-        (Some(_), None) => {
-            error!("from_branch specified, but to_branch is missing");
-            Err(CliError::IncorrectArgs {
-                msg: "Specifying `from_branch` requires `to_branch` to be specified".to_string(),
-                err: None,
-            })
-        }
-        (Some(_), Some(_)) => Ok(()),
-    }
-}
-
-fn try_retrieve_repo_from_path(path: Box<Path>) -> Result<Repository, CliError> {
+fn try_retrieve_repo_from_path(path: &Path) -> Result<Repository> {
     match git::open_repo(&path) {
         Ok(repository) => {
             info!("sucessfully retrieved repository from path");
             Ok(repository)
         }
         Err(err) => {
-            error!(
-                "failed to retrieve repository from path: {}",
-                String::from((*path).to_string_lossy())
-            );
-            Err(CliError::IncorrectArgs {
-                msg: "Failed to retireve repository from path".to_string(),
-                err: Some(err.into()),
-            })
+            return Err(anyhow!(
+                "Failed to retrieve repository from path: {:?}.\nError:{}",
+                path,
+                err,
+            ));
         }
     }
 }
 
 fn try_retrieve_repo_from_url(
-    access_token: Option<String>,
-    username: &str,
+    credentials: &Credentials,
     url: &Url,
-    clone_into: Option<Box<Path>>,
-) -> Result<Repository, CliError> {
+    clone_into: &Path,
+) -> Result<Repository> {
     trace!("attempt to start from url-specified repository");
-    let clone_into_path = &clone_into.unwrap_or_else(|| {
-        let path = Path::new(&format!("repository{}", Uuid::new_v4())).into();
-        trace!("set fallback clone_into path to {:?}", path);
-        path
-    });
+    utils::prepare_directory(&clone_into)
+        .with_context(|| "Failed to prepare directory for cloning")?;
 
-    match utils::prepare_directory(&clone_into_path) {
-        Ok(_) => {
-            trace!("Starting to clone repository");
-
-            let credentials = Credentials::UsernamePassword {
-                username,
-                password: &access_token.unwrap_or_else(|| "OnlyForTesting".to_string()), // ehttps://www.twitch.tv/directory/followingxpect("access_token must be specified, as it is the only supported authentication method for now"),
-            };
-            let cloned_repo = match git::clone_repo(&credentials, url, &clone_into_path) {
-                Ok(repo) => repo,
-                Err(e) => {
-                    error!("Failed to retreive repository from url.\nError: {}", e);
-                    let err = match e {
-                        crate::git::GitError::NoAccess { err } => CliError::InvalidArgs {
-                            err: Some(err.into()),
-                        },
-
-                        _ => CliError::Unknown {
-                            err: Some(e.into()),
-                        },
-                    };
-                    return Err(err);
-                }
-            };
-            info!("Repository retrieved successfuly from url");
-            Ok(cloned_repo)
-        }
+    trace!("Starting to clone repository");
+    let cloned_repo = match git::clone_repo(&credentials, url, &clone_into) {
+        Ok(repo) => repo,
         Err(err) => {
-            error!("Failed to prepare directory for cloning");
-            return Err(CliError::Unknown { err: Some(err) });
+            return Err(anyhow!(
+                "Failed to clone repository from url.\nError: {}",
+                err
+            ));
         }
-    }
+    };
+
+    Ok(cloned_repo)
 }
 
 fn setup_logging(tracing_level: u8) {
@@ -259,9 +216,9 @@ fn setup_logging(tracing_level: u8) {
         .init();
 }
 
-fn load_config(path: &Path) -> anyhow::Result<config::Config, CliError> {
+fn load_config(path: &Path) -> Result<Config, CliError> {
     trace!("Starting loading config from {:?}", path);
-    match config::Config::load_from_file(path) {
+    match Config::load_from_file(path) {
         Ok(config) => {
             info!("Config loaded successfully");
             Ok(config)
@@ -275,13 +232,6 @@ fn load_config(path: &Path) -> anyhow::Result<config::Config, CliError> {
 
 #[derive(Error, Debug)]
 pub enum CliError {
-    #[error("No branches and no commit specified. No local changes detected. Nothing to analyze.")]
-    InsufficientArgs,
-    #[error("Incorrect CLI arguments.{}\nError:{:?}", msg, err)]
-    IncorrectArgs {
-        msg: String,
-        err: Option<anyhow::Error>,
-    },
     #[error("Invalid arguments. Error:{:?}", err)]
     InvalidArgs { err: Option<anyhow::Error> },
     #[error("Config can not be retrieved")]

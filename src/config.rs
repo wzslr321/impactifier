@@ -34,17 +34,6 @@ pub struct OptionsConfig {
     pub clone_into: Option<Box<Path>>,
 }
 
-// #[derive(Debug, Deserialize)]
-// pub struct Trigger {
-//     pub path: Box<Path>,
-//
-//     #[serde(default)]
-//     pub pattern: Option<String>,
-//
-//     #[serde(default)]
-//     pub analyze_dependencies: bool,
-// }
-
 #[derive(Debug, Deserialize)]
 pub struct TransformStep {
     pub name: String,
@@ -59,12 +48,6 @@ pub struct Transform {
     #[serde(default)]
     pub steps: Vec<TransformStep>,
 }
-
-// #[derive(Debug, Deserialize)]
-// pub struct Matcher {
-//     pub path: PathBuf,
-//     pub pattern: String,
-// }
 
 #[derive(Debug, Deserialize)]
 pub enum AlertLevel {
@@ -81,11 +64,7 @@ pub struct Action {
 
 #[derive(Debug, Deserialize)]
 pub struct Rule {
-    // pub name: String,
-    // pub trigger: Trigger,
     pub transform: Transform,
-    // pub matcher: Matcher,
-    // pub action: Action,
 }
 
 pub struct CustomStep {

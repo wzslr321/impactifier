@@ -1,7 +1,7 @@
-use std::path::Path;
-use serde::Serialize;
-use thiserror::Error;
 use anyhow::Result;
+use serde::Serialize;
+use std::path::Path;
+use thiserror::Error;
 
 use git2::{Cred, RemoteCallbacks, Repository};
 use std::str;
@@ -51,13 +51,17 @@ pub enum DiffOptions<'a> {
     Branches { from: &'a str, to: &'a str },
 }
 
-pub fn extract_difference(repo: &Repository, options: &DiffOptions) -> anyhow::Result<Diff> {
+pub fn extract_difference(repo: &Repository, options: &DiffOptions) -> Result<Diff> {
     match options {
         DiffOptions::Branches { from, to } => extract_difference_branches(repo, from, to),
     }
 }
 
-pub fn fetch_remote(repo: &Repository, remote_name: &str, credentials: &Credentials) -> anyhow::Result<()> {
+pub fn fetch_remote(
+    repo: &Repository,
+    remote_name: &str,
+    credentials: &Credentials,
+) -> Result<()> {
     // Find the remote
     let mut remote = repo.find_remote(remote_name)?;
 
@@ -82,7 +86,7 @@ pub fn extract_difference_branches(
     repo: &Repository,
     from_branch: &str,
     to_branch: &str,
-) -> anyhow::Result<Diff> {
+) -> Result<Diff> {
     let ref_from = repo.find_reference(&format!("refs/heads/{}", from_branch))?;
     let ref_to = repo.find_reference(&format!("refs/remotes/origin/{}", to_branch))?;
 
@@ -144,7 +148,7 @@ impl Credentials<'_> {
 pub fn clone_repo(
     credentials: &Credentials,
     url: &Url,
-    clone_into: &Box<Path>,
+    clone_into: &Path,
 ) -> Result<Repository, GitError> {
     info!("start cloning repository");
 
