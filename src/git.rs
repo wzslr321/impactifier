@@ -27,8 +27,6 @@ pub enum GitError {
     },
     #[error("Failed to open repository from path: {}. Error: {}", path, err)]
     OpenRepositoryFailure { path: String, err: git2::Error },
-    // #[error("Unknown error: {}", *err)]
-    // Unknown { err: Box<dyn std::error::Error> },
 }
 
 #[derive(Debug, Serialize)]
@@ -57,26 +55,17 @@ pub fn extract_difference(repo: &Repository, options: &DiffOptions) -> Result<Di
     }
 }
 
-pub fn fetch_remote(
-    repo: &Repository,
-    remote_name: &str,
-    credentials: &Credentials,
-) -> Result<()> {
-    // Find the remote
+pub fn fetch_remote(repo: &Repository, remote_name: &str, credentials: &Credentials) -> Result<()> {
     let mut remote = repo.find_remote(remote_name)?;
 
-    // Set up callbacks for authentication (if needed)
-    let mut cb = RemoteCallbacks::new();
-    cb.credentials(|_url, _username_from_url, _allowed_types| credentials.into());
+    let mut callback = RemoteCallbacks::new();
+    callback.credentials(|_url, _username_from_url, _allowed_types| credentials.into());
 
-    // Configure fetch options with the callbacks
     let mut fetch_options = git2::FetchOptions::new();
-    fetch_options.remote_callbacks(cb);
+    fetch_options.remote_callbacks(callback);
 
-    // Define the refspecs to fetch. Here, we fetch all branches.
     let refspecs = ["+refs/heads/*:refs/remotes/origin/*"];
 
-    // Perform the fetch
     remote.fetch(&refspecs, Some(&mut fetch_options), None)?;
 
     Ok(())
@@ -87,6 +76,7 @@ pub fn extract_difference_branches(
     from_branch: &str,
     to_branch: &str,
 ) -> Result<Diff> {
+    // TODO: Those refs values most likely should not be hardcoded
     let ref_from = repo.find_reference(&format!("refs/heads/{}", from_branch))?;
     let ref_to = repo.find_reference(&format!("refs/remotes/origin/{}", to_branch))?;
 
@@ -153,10 +143,6 @@ pub fn clone_repo(
     info!("start cloning repository");
 
     let mut callbacks = RemoteCallbacks::new();
-    // TODO(wiktor.zajac) [https://github.com/wzslr321/impactifier/issues/9]
-    // Support different credentials for git access
-    //
-    // Additionally, it can probably be extracted to a separate util
     callbacks.credentials(|_url, _username_from_url, _allowed_types| credentials.into());
     trace!("Callback credentials set to userpass_plaintext");
 
@@ -167,15 +153,9 @@ pub fn clone_repo(
     fetch_options.depth(1);
 
     builder.fetch_options(fetch_options);
-    // TODO(wiktor.zajac) try to guard agains future changes, to update this trace automatically
-    // by using some implemented trait with display
-    trace!("FetchOptions set to depth=0");
 
     match builder.clone(url.as_str(), &clone_into) {
-        Ok(repository) => {
-            info!("repository cloned successfully");
-            Ok(repository)
-        }
+        Ok(repository) => Ok(repository),
         Err(e) => {
             error!("failed to clone repository");
             let err = match e.code() {

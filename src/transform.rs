@@ -1,5 +1,4 @@
 use crate::config::CustomStep;
-use anyhow::anyhow;
 use anyhow::Result;
 use rhai::{Dynamic, Engine, Map, Scope};
 use std::collections::HashMap;
