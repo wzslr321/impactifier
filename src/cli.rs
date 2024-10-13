@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::Path;
 
 use clap::Parser;
-use git2::Repository;
+use git2::{Cred, CredentialType, Repository};
 use serde_json::to_string_pretty;
 use thiserror::Error;
 use tracing::{error, info, trace, Level};
@@ -75,14 +75,12 @@ struct Args {
 
     #[arg(long, default_value_t=String::from("origin"))]
     origin: String,
-}
 
-// TODO: add more credentials variants
-pub enum Credentials<'a> {
-    UsernamePassword {
-        username: &'a str,
-        password: &'a str,
-    },
+    #[arg(long, env = "GIT_SSH_KEY")]
+    ssh_key_path: Option<String>,
+
+    #[clap(long, env = "GIT_PAT", help = "HTTPS Personal Access Token")]
+    https_pat: Option<String>,
 }
 
 pub fn run() -> Result<(), CliError> {
@@ -101,16 +99,15 @@ pub fn run() -> Result<(), CliError> {
     init_registry(cfg.custom_transform_scripts());
     trace!("Transform functions initialized successfully");
 
-    // TODO: Retrieve properly from args
-    let mock_credentials = utils::get_mock_credentials();
-
     let clone_into = match cfg.options.clone_into.as_deref() {
         Some(path) => path,
         None => Path::new("cloned_repository"),
     };
 
+    let credentials = utils::get_ssh_credentials(args.ssh_key_path.unwrap());
+
     let repository_retrieval_result = match cfg.repository.url {
-        Some(url) => try_retrieve_repo_from_url(mock_credentials, &url, clone_into),
+        Some(url) => try_retrieve_repo_from_url(&credentials, &url, clone_into),
         None => match &cfg.repository.path {
             Some(path) => try_retrieve_repo_from_path(path),
             None => {
@@ -127,7 +124,7 @@ pub fn run() -> Result<(), CliError> {
     };
     trace!("Successfully retrieved repository");
 
-    if let Err(fetch_err) = git::fetch_remote(&repository, &args.origin, &mock_credentials) {
+    if let Err(fetch_err) = git::fetch_remote(&repository, &args.origin, &credentials) {
         error!("Failed to fetch remote");
         return Err(CliError::Unknown {
             err: Some(fetch_err),
@@ -178,11 +175,14 @@ fn try_retrieve_repo_from_path(path: &Path) -> Result<Repository> {
     }
 }
 
-fn try_retrieve_repo_from_url(
-    credentials: &Credentials,
+fn try_retrieve_repo_from_url<'a, F>(
+    credentials: F,
     url: &Url,
     clone_into: &Path,
-) -> Result<Repository> {
+) -> Result<Repository>
+where
+    F: Fn(&str, Option<&str>, CredentialType) -> Result<Cred, git2::Error> + 'a,
+{
     trace!("attempt to start from url-specified repository");
     utils::prepare_directory(&clone_into)
         .with_context(|| "Failed to prepare directory for cloning")?;

@@ -1,3 +1,4 @@
+
 use crate::config::CustomStep;
 use anyhow::Result;
 use rhai::{Dynamic, Engine, Map, Scope};
@@ -15,6 +16,7 @@ pub struct Context {
     pub class_name: Option<String>,
 }
 
+#[allow(dead_code)]
 pub trait TransformFn {
     fn execute(
         &self,
