@@ -80,6 +80,9 @@ struct Args {
 
     #[clap(long, env = "GIT_PAT", help = "HTTPS Personal Access Token")]
     https_pat: Option<String>,
+
+    #[arg(long, env="GIT_USERNAME", default_value_t=String::from("git"))]
+    username: String,
 }
 
 pub fn run() -> Result<(), CliError> {
@@ -103,13 +106,7 @@ pub fn run() -> Result<(), CliError> {
         None => Path::new("cloned_repository"),
     };
 
-    let credentials = match args.ssh_key_path {
-        Some(path) => Some(utils::get_ssh_credentials(path)),
-        None => {
-            info!("No git credentials detected");
-            None
-        }
-    };
+    let credentials = utils::get_git_credentials(args.ssh_key_path, args.username, args.https_pat);
 
     let repository_retrieval_result = match cfg.repository.url {
         Some(url) => {

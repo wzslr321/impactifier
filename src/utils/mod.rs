@@ -19,28 +19,33 @@ pub fn prepare_directory(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn get_ssh_credentials(
-    ssh_key_path: String,
-) -> impl Fn(&str, Option<&str>, CredentialType) -> Result<Cred, git2::Error> {
-    // let key_path_owned: String = ssh_key_path
-    //     .unwrap_or_else(|| {
-    //         dirs_2::home_dir()
-    //             .map(|p| p.join(".ssh").join("id_rsa").to_string_lossy().into_owned())
-    //             .unwrap_or_else(|| String::from("~/.ssh/id_rsa"))
-    //     });
-
-    move |_url, username, allowed_types| {
-        if allowed_types.contains(CredentialType::SSH_KEY) {
-            let cred = Cred::ssh_key(
-                username.unwrap_or_else(|| "git"),
-                None,
-                Path::new(&ssh_key_path),
-                None,
-            )?;
-
-            Ok(cred)
-        } else {
-            Err(git2::Error::from_str("Unsupported credential type for SSH"))
-        }
+pub fn get_git_credentials(
+    ssh_key_path: Option<String>,
+    username: String,
+    https_pat: Option<String>,
+) -> Option<impl Fn(&str, Option<&str>, CredentialType) -> Result<Cred, git2::Error>> {
+    if let (None, None) = (&ssh_key_path, &https_pat) {
+        trace!("Neither ssh key path, nor https pat was specified");
+        return None;
     }
+
+    Some(
+        move |_url: &str, _username: Option<&str>, allowed_types: CredentialType| {
+            if let Some(ssh) = &ssh_key_path {
+                if allowed_types.contains(CredentialType::SSH_KEY) {
+                    return Cred::ssh_key(&username, None, Path::new(&ssh), None);
+                } else {
+                    return Err(git2::Error::from_str("Unsupported credential type for SSH"));
+                }
+            } else {
+                if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
+                    return Cred::userpass_plaintext(&username, &https_pat.clone().unwrap());
+                } else {
+                    return Err(git2::Error::from_str(
+                        "Unsupported credential type for user_pass_plaintext",
+                    ));
+                }
+            }
+        },
+    )
 }

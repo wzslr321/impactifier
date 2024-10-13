@@ -69,6 +69,7 @@ where
         None => callback.credentials(|_url, _username, _allowed_types| git2::Cred::default()),
     };
 
+
     let mut fetch_options = git2::FetchOptions::new();
     fetch_options.remote_callbacks(callback);
 
