@@ -53,14 +53,21 @@ pub fn extract_difference(repo: &Repository, options: &DiffOptions) -> Result<Di
     }
 }
 
-pub fn fetch_remote<'a, F>(repo: &Repository, remote_name: &str, credentials: F) -> Result<()> 
+pub fn fetch_remote<'a, F>(
+    repo: &Repository,
+    remote_name: &str,
+    credentials: &Option<F>,
+) -> Result<()>
 where
     F: Fn(&str, Option<&str>, CredentialType) -> Result<Cred, git2::Error> + 'a,
 {
     let mut remote = repo.find_remote(remote_name)?;
 
     let mut callback = RemoteCallbacks::new();
-    callback.credentials(credentials);
+    match credentials {
+        Some(credentials) => callback.credentials(credentials),
+        None => callback.credentials(|_url, _username, _allowed_types| git2::Cred::default()),
+    };
 
     let mut fetch_options = git2::FetchOptions::new();
     fetch_options.remote_callbacks(callback);
@@ -78,7 +85,7 @@ pub fn extract_difference_branches(
     to_branch: &str,
 ) -> Result<Diff> {
     // TODO: Those refs values most likely should not be hardcoded
-    let ref_from = repo.find_reference(&format!("refs/heads/{}", from_branch))?;
+    let ref_from = repo.find_reference(&format!("refs/remotes/origin/{}", from_branch))?;
     let ref_to = repo.find_reference(&format!("refs/remotes/origin/{}", to_branch))?;
 
     let commit_a = ref_from.peel_to_commit()?;
@@ -122,18 +129,27 @@ pub fn open_repo(path: &Path) -> Result<Repository, GitError> {
 }
 
 pub fn clone_repo<'a, F>(
-    credentials: F,
+    credentials: &Option<F>,
     url: &Url,
     clone_into: &Path,
-) -> Result<Repository, GitError> 
+) -> Result<Repository, GitError>
 where
     F: Fn(&str, Option<&str>, CredentialType) -> Result<Cred, git2::Error> + 'a,
 {
     info!("start cloning repository");
 
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(credentials);
-    trace!("Callback credentials set to userpass_plaintext");
+
+    match credentials {
+        Some(credentials) => {
+            trace!("Set git credentails to user specified ones");
+            callbacks.credentials(credentials)
+        }
+        None => {
+            trace!("Set authenticationc allback to default git credentials");
+            callbacks.credentials(|_url, _username_from_url, _allowed_types| git2::Cred::default())
+        }
+    };
 
     let mut builder = git2::build::RepoBuilder::new();
 

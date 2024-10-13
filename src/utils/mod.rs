@@ -1,12 +1,10 @@
 use anyhow::Result;
 use git2::{Cred, CredentialType};
-use std::{
-    fs,
-    path::Path,
-};
+use std::{fs, path::Path};
 use tracing::{info, trace};
 
 pub fn prepare_directory(path: &Path) -> Result<()> {
+    trace!("Preparing directory for repository cloning");
     if path.exists() {
         if path.read_dir()?.next().is_some() {
             info!("Directory is not empty, removing existing files...");
@@ -33,12 +31,14 @@ pub fn get_ssh_credentials(
 
     move |_url, username, allowed_types| {
         if allowed_types.contains(CredentialType::SSH_KEY) {
-            Ok(Cred::ssh_key(
+            let cred = Cred::ssh_key(
                 username.unwrap_or_else(|| "git"),
                 None,
                 Path::new(&ssh_key_path),
                 None,
-            )?)
+            )?;
+
+            Ok(cred)
         } else {
             Err(git2::Error::from_str("Unsupported credential type for SSH"))
         }

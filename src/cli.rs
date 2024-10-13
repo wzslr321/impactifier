@@ -4,11 +4,10 @@ use std::io::Write;
 use std::path::Path;
 
 use clap::Parser;
-use git2::{Cred, CredentialType, Repository};
+use git2::Repository;
 use serde_json::to_string_pretty;
 use thiserror::Error;
 use tracing::{error, info, trace, Level};
-use url::Url;
 
 use crate::config::Config;
 use crate::git;
@@ -104,10 +103,21 @@ pub fn run() -> Result<(), CliError> {
         None => Path::new("cloned_repository"),
     };
 
-    let credentials = utils::get_ssh_credentials(args.ssh_key_path.unwrap());
+    let credentials = match args.ssh_key_path {
+        Some(path) => Some(utils::get_ssh_credentials(path)),
+        None => {
+            info!("No git credentials detected");
+            None
+        }
+    };
 
     let repository_retrieval_result = match cfg.repository.url {
-        Some(url) => try_retrieve_repo_from_url(&credentials, &url, clone_into),
+        Some(url) => {
+            if let Err(err) = utils::prepare_directory(clone_into) {
+                return Err(CliError::Unknown { err: Some(err) });
+            }
+            git::clone_repo(&credentials, &url, clone_into).map_err(|err| anyhow!(err))
+        }
         None => match &cfg.repository.path {
             Some(path) => try_retrieve_repo_from_path(path),
             None => {
@@ -173,32 +183,6 @@ fn try_retrieve_repo_from_path(path: &Path) -> Result<Repository> {
             ));
         }
     }
-}
-
-fn try_retrieve_repo_from_url<'a, F>(
-    credentials: F,
-    url: &Url,
-    clone_into: &Path,
-) -> Result<Repository>
-where
-    F: Fn(&str, Option<&str>, CredentialType) -> Result<Cred, git2::Error> + 'a,
-{
-    trace!("attempt to start from url-specified repository");
-    utils::prepare_directory(&clone_into)
-        .with_context(|| "Failed to prepare directory for cloning")?;
-
-    trace!("Starting to clone repository");
-    let cloned_repo = match git::clone_repo(&credentials, url, &clone_into) {
-        Ok(repo) => repo,
-        Err(err) => {
-            return Err(anyhow!(
-                "Failed to clone repository from url.\nError: {}",
-                err
-            ));
-        }
-    };
-
-    Ok(cloned_repo)
 }
 
 fn setup_logging(tracing_level: u8) {
