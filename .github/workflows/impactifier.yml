@@ -51,7 +51,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./target/release/impactifier --tracing-level=0 --from-branch=main --to-branch=refactor 
+          ./target/release/impactifier --tracing-level=0 --from-branch=main --to-branch=main
 
       # 6. (Optional) Output diff.json for debugging
       - name: Output diff.json (Debug)

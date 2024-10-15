@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -142,7 +142,7 @@ pub fn run() -> Result<(), CliError> {
     // TODO: Support other DiffOptions
     //
     // Current one is temporary, just for testing purposes
-    let diff = match git::extract_difference(
+    let _diff = match git::extract_difference(
         &repository,
         &git::DiffOptions::Branches {
             from: &args.from_branch.unwrap(),
@@ -152,18 +152,25 @@ pub fn run() -> Result<(), CliError> {
         Ok(diff) => diff,
         Err(err) => {
             error!("Failed to extract difference");
+            // Temporary, for testing purposes
+            save_run_result(false);
             return Err(CliError::Unknown { err: Some(err) });
         }
     };
     trace!("Successfuly extracted difference");
 
     // Temporary, for testing purposes
-    let serialized_diff = to_string_pretty(&diff).unwrap();
+    save_run_result(true);
+
+    Ok(())
+}
+
+fn save_run_result(is_success: bool) {
+    let text = if is_success { "SUCCESS" } else { "FAILURE" };
+    let serialized_diff = to_string_pretty(text).unwrap();
 
     let mut file = File::create("./diff.json").unwrap();
     file.write_all(serialized_diff.as_bytes()).unwrap();
-
-    Ok(())
 }
 
 fn try_retrieve_repo_from_path(path: &Path) -> Result<Repository> {
