@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -8,7 +8,6 @@ use git2::Repository;
 use serde_json::to_string_pretty;
 use thiserror::Error;
 use tracing::{error, info, trace, Level};
-use url::Url;
 
 use crate::config::Config;
 use crate::git;
@@ -75,14 +74,15 @@ struct Args {
 
     #[arg(long, default_value_t=String::from("origin"))]
     origin: String,
-}
 
-// TODO: add more credentials variants
-pub enum Credentials<'a> {
-    UsernamePassword {
-        username: &'a str,
-        password: &'a str,
-    },
+    #[arg(long, env = "GIT_SSH_KEY")]
+    ssh_key_path: Option<String>,
+
+    #[clap(long, env = "GIT_PAT", help = "HTTPS Personal Access Token")]
+    https_pat: Option<String>,
+
+    #[arg(long, env="GIT_USERNAME", default_value_t=String::from("git"))]
+    username: String,
 }
 
 pub fn run() -> Result<(), CliError> {
@@ -101,16 +101,20 @@ pub fn run() -> Result<(), CliError> {
     init_registry(cfg.custom_transform_scripts());
     trace!("Transform functions initialized successfully");
 
-    // TODO: Retrieve properly from args
-    let mock_credentials = utils::get_mock_credentials();
-
     let clone_into = match cfg.options.clone_into.as_deref() {
         Some(path) => path,
         None => Path::new("cloned_repository"),
     };
 
+    let credentials = utils::get_git_credentials(args.ssh_key_path, args.username, args.https_pat);
+
     let repository_retrieval_result = match cfg.repository.url {
-        Some(url) => try_retrieve_repo_from_url(mock_credentials, &url, clone_into),
+        Some(url) => {
+            if let Err(err) = utils::prepare_directory(clone_into) {
+                return Err(CliError::Unknown { err: Some(err) });
+            }
+            git::clone_repo(&credentials, &url, clone_into).map_err(|err| anyhow!(err))
+        }
         None => match &cfg.repository.path {
             Some(path) => try_retrieve_repo_from_path(path),
             None => {
@@ -127,7 +131,7 @@ pub fn run() -> Result<(), CliError> {
     };
     trace!("Successfully retrieved repository");
 
-    if let Err(fetch_err) = git::fetch_remote(&repository, &args.origin, &mock_credentials) {
+    if let Err(fetch_err) = git::fetch_remote(&repository, &args.origin, &credentials) {
         error!("Failed to fetch remote");
         return Err(CliError::Unknown {
             err: Some(fetch_err),
@@ -138,7 +142,7 @@ pub fn run() -> Result<(), CliError> {
     // TODO: Support other DiffOptions
     //
     // Current one is temporary, just for testing purposes
-    let diff = match git::extract_difference(
+    let _diff = match git::extract_difference(
         &repository,
         &git::DiffOptions::Branches {
             from: &args.from_branch.unwrap(),
@@ -148,18 +152,25 @@ pub fn run() -> Result<(), CliError> {
         Ok(diff) => diff,
         Err(err) => {
             error!("Failed to extract difference");
+            // Temporary, for testing purposes
+            save_run_result(false);
             return Err(CliError::Unknown { err: Some(err) });
         }
     };
     trace!("Successfuly extracted difference");
 
     // Temporary, for testing purposes
-    let serialized_diff = to_string_pretty(&diff).unwrap();
+    save_run_result(true);
+
+    Ok(())
+}
+
+fn save_run_result(is_success: bool) {
+    let text = if is_success { "SUCCESS" } else { "FAILURE" };
+    let serialized_diff = to_string_pretty(text).unwrap();
 
     let mut file = File::create("./diff.json").unwrap();
     file.write_all(serialized_diff.as_bytes()).unwrap();
-
-    Ok(())
 }
 
 fn try_retrieve_repo_from_path(path: &Path) -> Result<Repository> {
@@ -176,29 +187,6 @@ fn try_retrieve_repo_from_path(path: &Path) -> Result<Repository> {
             ));
         }
     }
-}
-
-fn try_retrieve_repo_from_url(
-    credentials: &Credentials,
-    url: &Url,
-    clone_into: &Path,
-) -> Result<Repository> {
-    trace!("attempt to start from url-specified repository");
-    utils::prepare_directory(&clone_into)
-        .with_context(|| "Failed to prepare directory for cloning")?;
-
-    trace!("Starting to clone repository");
-    let cloned_repo = match git::clone_repo(&credentials, url, &clone_into) {
-        Ok(repo) => repo,
-        Err(err) => {
-            return Err(anyhow!(
-                "Failed to clone repository from url.\nError: {}",
-                err
-            ));
-        }
-    };
-
-    Ok(cloned_repo)
 }
 
 fn setup_logging(tracing_level: u8) {

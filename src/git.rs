@@ -3,12 +3,10 @@ use serde::Serialize;
 use std::path::Path;
 use thiserror::Error;
 
-use git2::{Cred, RemoteCallbacks, Repository};
+use git2::{Cred, CredentialType, RemoteCallbacks, Repository};
 use std::str;
 use tracing::{error, info, trace};
 use url::Url;
-
-use crate::cli::Credentials;
 
 #[derive(Error, Debug)]
 pub enum GitError {
@@ -55,11 +53,14 @@ pub fn extract_difference(repo: &Repository, options: &DiffOptions) -> Result<Di
     }
 }
 
-pub fn fetch_remote(repo: &Repository, remote_name: &str, credentials: &Credentials) -> Result<()> {
+pub fn fetch_remote<'a, F>(repo: &Repository, remote_name: &str, credentials: F) -> Result<()>
+where
+    F: Fn(&str, Option<&str>, CredentialType) -> Result<Cred, git2::Error> + 'a,
+{
     let mut remote = repo.find_remote(remote_name)?;
 
     let mut callback = RemoteCallbacks::new();
-    callback.credentials(|_url, _username_from_url, _allowed_types| credentials.into());
+    callback.credentials(credentials);
 
     let mut fetch_options = git2::FetchOptions::new();
     fetch_options.remote_callbacks(callback);
@@ -77,7 +78,7 @@ pub fn extract_difference_branches(
     to_branch: &str,
 ) -> Result<Diff> {
     // TODO: Those refs values most likely should not be hardcoded
-    let ref_from = repo.find_reference(&format!("refs/heads/{}", from_branch))?;
+    let ref_from = repo.find_reference(&format!("refs/remotes/origin/{}", from_branch))?;
     let ref_to = repo.find_reference(&format!("refs/remotes/origin/{}", to_branch))?;
 
     let commit_a = ref_from.peel_to_commit()?;
@@ -120,31 +121,19 @@ pub fn open_repo(path: &Path) -> Result<Repository, GitError> {
     }
 }
 
-impl Credentials<'_> {
-    fn into(&self) -> Result<Cred, git2::Error> {
-        let credentials = match self {
-            Credentials::UsernamePassword { username, password } => {
-                Cred::userpass_plaintext(&username, &password)
-            }
-        };
-
-        match credentials {
-            Ok(credentials) => Ok(credentials),
-            Err(err) => Err(err),
-        }
-    }
-}
-
-pub fn clone_repo(
-    credentials: &Credentials,
+pub fn clone_repo<'a, F>(
+    credentials: F,
     url: &Url,
     clone_into: &Path,
-) -> Result<Repository, GitError> {
+) -> Result<Repository, GitError>
+where
+    F: Fn(&str, Option<&str>, CredentialType) -> Result<Cred, git2::Error> + 'a,
+{
     info!("start cloning repository");
 
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|_url, _username_from_url, _allowed_types| credentials.into());
-    trace!("Callback credentials set to userpass_plaintext");
+
+    callbacks.credentials(credentials);
 
     let mut builder = git2::build::RepoBuilder::new();
 
