@@ -179,13 +179,11 @@ fn try_retrieve_repo_from_path(path: &Path) -> Result<Repository> {
             info!("sucessfully retrieved repository from path");
             Ok(repository)
         }
-        Err(err) => {
-            Err(anyhow!(
-                "Failed to retrieve repository from path: {:?}.\nError:{}",
-                path,
-                err,
-            ))
-        }
+        Err(err) => Err(anyhow!(
+            "Failed to retrieve repository from path: {:?}.\nError:{}",
+            path,
+            err,
+        )),
     }
 }
 

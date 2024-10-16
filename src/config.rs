@@ -99,8 +99,8 @@ impl Config {
         let scripts: Vec<CustomStep> = self
             .rules
             .iter()
-            .flat_map(|rule| &rule.transform.steps) 
-            .filter(|step| step.name.starts_with("custom")) 
+            .flat_map(|rule| &rule.transform.steps)
+            .filter(|step| step.name.starts_with("custom"))
             .filter_map(|step| {
                 step.args
                     .as_ref()

@@ -1,12 +1,12 @@
 mod cli;
 mod config;
 mod git;
-mod utils;
 mod transform;
+mod utils;
 
-use cli::CliError;
 use anyhow::Result;
+use cli::CliError;
 
 fn main() -> Result<(), CliError> {
-    cli::run() 
+    cli::run()
 }
