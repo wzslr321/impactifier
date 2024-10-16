@@ -163,17 +163,17 @@ pub fn run() -> Result<(), CliError> {
 }
 
 fn try_retrieve_repo_from_path(path: &Path) -> Result<Repository> {
-    match git::open_repo(&path) {
+    match git::open_repo(path) {
         Ok(repository) => {
             info!("sucessfully retrieved repository from path");
             Ok(repository)
         }
         Err(err) => {
-            return Err(anyhow!(
+            Err(anyhow!(
                 "Failed to retrieve repository from path: {:?}.\nError:{}",
                 path,
                 err,
-            ));
+            ))
         }
     }
 }
@@ -225,7 +225,7 @@ fn load_config(path: &Path) -> Result<Config, CliError> {
         }
         Err(err) => {
             error!("Failed to read configuration from {:?}", path);
-            return Err(CliError::InvalidConfigPath { err: Some(err) });
+            Err(CliError::InvalidConfigPath { err: Some(err) })
         }
     }
 }

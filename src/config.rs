@@ -1,11 +1,11 @@
 use anyhow::Result;
 use serde::{Deserialize, Deserializer};
-use tracing::error;
 use std::cmp;
 use std::fmt;
 use std::path::Path;
 use thiserror::Error;
 use tracing::debug;
+use tracing::error;
 use url::Url;
 
 #[derive(Error, Debug)]
@@ -44,7 +44,6 @@ pub struct TransformStep {
 #[derive(Debug, Deserialize)]
 pub struct Transform {
     // pub name: String,
-
     #[serde(default)]
     pub steps: Vec<TransformStep>,
 }
@@ -86,7 +85,7 @@ impl Config {
                     path: String::from(file_path.to_string_lossy()),
                     msg: e.to_string(),
                 }
-                .into())
+                .into());
             }
         };
 
@@ -97,24 +96,20 @@ impl Config {
     }
 
     pub fn custom_transform_scripts(&self) -> Option<Vec<CustomStep>> {
-        // Iterate over all rules and their transform steps
         let scripts: Vec<CustomStep> = self
             .rules
             .iter()
-            .flat_map(|rule| &rule.transform.steps) // Flatten all steps from all rules
-            .filter(|step| step.name.starts_with("custom") && step.args.is_some()) // Filter steps with names starting with "custom"
+            .flat_map(|rule| &rule.transform.steps) 
+            .filter(|step| step.name.starts_with("custom")) 
             .filter_map(|step| {
-                // TODO(wiktor.zajac) cringe, fix
-                Some(CustomStep {
-                    name: step.name.to_owned(),
-                    script: step
-                        .args
-                        .as_ref()
-                        .and_then(|args| args.get("script"))
-                        .and_then(|script_value| script_value.as_str())
-                        .map(|s| s.to_string())
-                        .unwrap(),
-                })
+                step.args
+                    .as_ref()
+                    .and_then(|args| args.get("script"))
+                    .and_then(|script_value| script_value.as_str())
+                    .map(|s| CustomStep {
+                        name: step.name.to_owned(),
+                        script: s.to_string(),
+                    })
             })
             .collect();
 
