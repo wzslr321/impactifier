@@ -143,7 +143,7 @@ where
 
     builder.fetch_options(fetch_options);
 
-    match builder.clone(url.as_str(), &clone_into) {
+    match builder.clone(url.as_str(), clone_into) {
         Ok(repository) => Ok(repository),
         Err(e) => {
             error!("failed to clone repository");

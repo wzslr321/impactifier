@@ -25,13 +25,13 @@ pub fn get_git_credentials(
     https_pat: Option<String>,
 ) -> impl Fn(&str, Option<&str>, CredentialType) -> Result<Cred, git2::Error> {
     match (&ssh_key_path, &https_pat) {
-        (None, None) => 
+        (None, None) =>
             trace!("Neither ssh key path, nor https pat was specified. Fallback set to default git credentials"),
-        (None, Some(_)) => 
+        (None, Some(_)) =>
             trace!("HTTPS PAT was specified and will be used for git credentials creation along username: {}", username),
-        (Some(_), None) => 
+        (Some(_), None) =>
             trace!("SSH Key was specified and will be used for git credentials"),
-        (Some(_), Some(_)) => 
+        (Some(_), Some(_)) =>
             trace!("both SSH Key and HTTPS PAT were specified, but only SSH Key will be used for git credentials"),
     };
 
@@ -46,14 +46,12 @@ pub fn get_git_credentials(
             } else {
                 Err(git2::Error::from_str("Unsupported credential type for SSH"))
             }
+        } else if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
+            Cred::userpass_plaintext(&username, &https_pat.clone().unwrap())
         } else {
-            if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
-                Cred::userpass_plaintext(&username, &https_pat.clone().unwrap())
-            } else {
-                Err(git2::Error::from_str(
-                    "Unsupported credential type for user_pass_plaintext",
-                ))
-            }
+            Err(git2::Error::from_str(
+                "Unsupported credential type for user_pass_plaintext",
+            ))
         }
     }
 }
