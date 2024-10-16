@@ -1,10 +1,10 @@
+use anyhow::Result;
+use git2::{Cred, CredentialType};
 use std::{fs, path::Path};
 use tracing::{info, trace};
-use anyhow::Result;
-
-use crate::cli::Credentials;
 
 pub fn prepare_directory(path: &Path) -> Result<()> {
+    trace!("Preparing directory for repository cloning");
     if path.exists() {
         if path.read_dir()?.next().is_some() {
             info!("Directory is not empty, removing existing files...");
