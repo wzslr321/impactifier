@@ -1,8 +1,8 @@
 # Impactifier
 
-Impactifier is a tool designed to analyze the impact of code changes, across the whole - possibly separated - codebase, and allow to take various actions based on that. It aims to help developers identify potential downstream effects of changes, allowing for more reliable and frequent releases. Can be used as either local tool or as part of CI/CD.  
+> Currently stale, as I am temporarily working on related C++ library, that hopefully will become a part of this project, or at least will give me knowledge to do work on it further.
 
-> This project is build in public, therefore I strive to stream its development on [Twitch](https://www.twitch.tv/creatixd)
+Impactifier is a tool designed to analyze the impact of code changes, across the whole - possibly separated - codebase, and allow to take various actions based on that. It aims to help developers identify potential downstream effects of changes, allowing for more reliable and frequent releases. Can be used as either local tool or as part of CI/CD.  
 
 <br>
 
